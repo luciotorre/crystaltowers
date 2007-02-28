@@ -6,6 +6,16 @@ from pygame.locals import *
 import qgl
     
 import model
+TOWERCOLOURS = [
+    (1.0, 0.0, 0.0, 1.0),
+    (0.0, 0.8, 0.0, 1.0),
+    (0.3, 0.3, 1.0, 1.0),
+    (1.0, 1.0, 0.0, 1.0),
+    (0.3, 0.8, 0.5, 1.0),
+    #(0.8, 0.3, 1.0, 1.0),
+]
+TOWERSCALES = [ 1, 0.7, 0.5 ]
+
 
 def main():
     #setup pygame as normal, making sure to include the OPENGL flag in the init function arguments.
@@ -62,8 +72,12 @@ def main():
     environment.add(light)
     environment.add(group)
 
+    game = model.game_for(4)
+    for player, color in zip(game.players, TOWERCOLOURS):
+        player.color = color
+
     boardGroup = qgl.scene.Group()
-    quad = qgl.scene.state.Quad( (30, 30) )
+    quad = qgl.scene.state.Quad( (4*game.board.side, 4*game.board.side) )
     boardGroup.axis = (1,0,0)
     boardGroup.angle -= 90
     boardGroup.translate = (0,-1,0)
@@ -72,34 +86,21 @@ def main():
     boardGroup.add(quad)
     group.add(boardGroup)
 
-    NUM_TOWERS=7
-    TOWERCOLOURS = [
-        (1.0, 0.0, 0.0, 0.5),
-        (0.0, 0.8, 0.0, 0.5),
-        (0.3, 0.3, 1.0, 0.5),
-        (1.0, 1.0, 0.0, 0.5),
-    ]
-    TOWERSCALES = [ 1, 0.7, 0.5 ]
+    for stack in game.board:
+        x, z = stack.position
 
-    game = model.game_for(5)
-    print game.check_ready()
-    print game._board
-    #print game.board
-
-    for z in range(NUM_TOWERS):
-        for x in range(NUM_TOWERS):
+        for y, piece in enumerate(stack.pieces):
             tower = qgl.scene.Group()
 
-            color = random.choice(TOWERCOLOURS)
-            scale = random.choice(TOWERSCALES)
-            darkcolor = (color[0]*.2, color[1]*.2, color[2]*.2, 0.5)
+            color = piece.player.color
+            darkcolor = (color[0]*0.15, color[1]*0.15, color[2]*0.2, 1.0)
             material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
-            tower.scale = [scale]*3
-            tower.translate = (x-NUM_TOWERS/2 + (.5*(z%2)+.25))*4, -1+scale, (z-NUM_TOWERS/2)*3.5777087639996634
 
+            scale = TOWERSCALES[piece.size-1]
+            tower.scale = [scale]*3
+            tower.translate = (x-game.board.side/2 + ((z%2)*0.5+0.25))*4, -1+scale + y*.5, (z-game.board.side/2)*3.5777087639996634
             tower.add(material, tria)
             group.add(tower)
-        #group.add(sphere)
 
     #Before the structure can be drawn, it needs to be compiled. To do this, we ask the root node to accept the compiler visitor.
     #If any new nodes are added later in the program, they must also accept the compiler visitor before they can be drawn.
