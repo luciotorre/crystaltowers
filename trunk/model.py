@@ -56,7 +56,11 @@ class Board:
     def __getitem__(self, key):
         return self.positions.get(key, None)
     def __getitem__(self, key):
-        return self.positions.get(key, None)    
+        return self.positions.get(key, None) 
+        
+    def __iter__(self):
+        return self.positions.itervalues()
+           
     def place(self, piece, position):
         if not position in self.positions:
             stack = Stack( position )
@@ -268,7 +272,10 @@ class Player(StateMixin):
     def split(self, stack, piece, where):
         if self.status != self.STATUS_PLAYING:
             raise GameError("Cannot Move, wrong status")
+        if len([ p for p in stack.pieces if p.player == self ]) < 2:
+            raise GameError("Need two or more pieces to split")
         
+            
     def mine(self, stack, piece):
         if self.status != self.STATUS_PLAYING:
             raise GameError("Cannot Move, wrong status")
