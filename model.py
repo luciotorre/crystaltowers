@@ -112,7 +112,7 @@ class Game(StateMixin):
         self.status = self.STATUS_WAITING
         self.name = name
         self._players = []
-        self._board = None
+        self.board = None
         self.winner = None
         
     def join(self, name):
