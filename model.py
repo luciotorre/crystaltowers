@@ -126,14 +126,14 @@ class Game(StateMixin):
         self.server = server
         self.status = self.STATUS_WAITING
         self.name = name
-        self._players = []
+        self.players = []
         self.board = None
         self.winner = None
         
     def join(self, name):
         if self.status == self.STATUS_WAITING:
             player = Player(name, self)
-            self._players.append( player )
+            self.players.append( player )
             return player
         else:
             raise GameError("Cannot join ongoing game")        
@@ -142,14 +142,14 @@ class Game(StateMixin):
         if not self.status == self.STATUS_WAITING:
             return False
             
-        for p in self._players:
+        for p in self.players:
             if not p.status == p.STATUS_READY:
                 return False
         
-        for p in self._players:
+        for p in self.players:
             p.status = p.STATUS_PLAYING
             self.status = self.STATUS_PLAYING
-            self.board = Board(self._players)
+            self.board = Board(self.players)
         return True
         
     def check_done(self):
@@ -159,16 +159,16 @@ class Game(StateMixin):
             return True
             
         if self.status == self.STATUS_PLAYING:
-            for p in self._players:
+            for p in self.players:
                 if not p.status in (p.STATUS_BLOCKED, p.STATUS_PASS, p.STATUS_LEFT):
                     return False
                     
         #todo: count scores
 
-        self._players = [ p for p in self._players 
+        self.players = [ p for p in self.players 
                             if p.status != p.STATUS_LEFT ]
                 
-        for p in self._players:
+        for p in self.players:
             p.status = p.STATUS_DONE
         self.status = self.STATUS_DONE
         
@@ -176,11 +176,11 @@ class Game(StateMixin):
         
     def left(self, player):
         if self.status == self.STATUS_WAITING:
-            if player in self._players:
-                self._players.remove(player)
+            if player in self.players:
+                self.players.remove(player)
         else:
             allgone = True
-            for p in self._players:
+            for p in self.players:
                 if p.status != p.STATUS_LEFT:
                     allgone = False
             if allgone:
@@ -285,6 +285,9 @@ class Player(StateMixin):
             raise GameError("Cannot Move, wrong status")
         if len([ p for p in stack.pieces if p.player == self ]) < 2:
             raise GameError("Need two or more pieces to split")
+        if not piece in stack:
+            raise GameError("Piece is not There") 
+        pos = stack.pieces.index(piece)
         
             
     def mine(self, stack, piece):
