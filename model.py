@@ -10,7 +10,7 @@ class Piece:
     
 class Stack:
     def __init__(self, where):
-        self.where = where
+        self.position = where
         self.pieces = []
         
     def place(self, piece):
@@ -37,9 +37,7 @@ class Board:
     and get a stack 
     """
     def __init__(self, players):
-        
         self.players = players
-        self.stacks = []
         self.positions = {}
         
         toset = [ (player, size) 
@@ -57,7 +55,6 @@ class Board:
                          ]
         
         for player, size in toset:
-            print "1", player, size
             position = random.choice(empty_positions)
             piece = Piece(player, size)
             self.place(piece, position)
@@ -78,7 +75,6 @@ class Board:
     def place(self, piece, position):
         if not position in self.positions:
             stack = Stack( position )
-            self.stacks.append( stack )
             self.positions[position]=stack
         else:
             stack = self.positions[ position ]
