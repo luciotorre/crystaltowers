@@ -4,8 +4,8 @@ import random
 from pygame.locals import *
 
 import qgl
-import qgle
     
+import model
 
 def main():
     #setup pygame as normal, making sure to include the OPENGL flag in the init function arguments.
@@ -37,7 +37,6 @@ def main():
     #leaves are added to the group. The texture leaf loads a texture image ready for drawing. Any sphere leaves, which are drawn 
     #after a texture leaf will be rendered with the texture image. Sphere has 1 argument, which is the sphere radius, and two keywords
     #which control how many segments are used to approximate the sphere.
-    texture = qgl.scene.state.Texture("land.jpg")
     sphere = qgl.scene.state.Sphere(1, x_segments=16, y_segments=16)
     towerTriangles = [
         [(0,2,0), (-1,-1,-1), (1,-1,-1)],
@@ -68,6 +67,8 @@ def main():
     boardGroup.axis = (1,0,0)
     boardGroup.angle -= 90
     boardGroup.translate = (0,-1,0)
+    texture = qgl.scene.state.Texture("art/board.jpg")
+    boardGroup.add(texture)
     boardGroup.add(quad)
     group.add(boardGroup)
 
@@ -80,6 +81,11 @@ def main():
     ]
     TOWERSCALES = [ 1, 0.7, 0.5 ]
 
+    game = model.game_for(5)
+    print game.check_ready()
+    print game._board
+    #print game.board
+
     for z in range(NUM_TOWERS):
         for x in range(NUM_TOWERS):
             tower = qgl.scene.Group()
@@ -89,7 +95,7 @@ def main():
             darkcolor = (color[0]*.2, color[1]*.2, color[2]*.2, 0.5)
             material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
             tower.scale = [scale]*3
-            tower.translate = (x-NUM_TOWERS/2 + (.5*(z%2)))*4, -1+scale, (z-NUM_TOWERS/2)*3.5777087639996634
+            tower.translate = (x-NUM_TOWERS/2 + (.5*(z%2)+.25))*4, -1+scale, (z-NUM_TOWERS/2)*3.5777087639996634
 
             tower.add(material, tria)
             group.add(tower)
