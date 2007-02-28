@@ -53,9 +53,10 @@ class Board:
             self.place(piece, position)
             empty_positions.remove(position)
             
-    def __getitem__(self, item):
-        return self.positions.get(item, None)
-        
+    def __getitem__(self, key):
+        return self.positions.get(key, None)
+    def __getitem__(self, key):
+        return self.positions.get(key, None)    
     def place(self, piece, position):
         if not position in self.positions:
             stack = Stack( position )
@@ -273,14 +274,26 @@ class Player(StateMixin):
             raise GameError("Cannot Move, wrong status")
         if not piece in stack:
             raise GameError("Piece is not There")
+        if stack[-1].player == self:
+            raise GameError("Cannot mine a tower you own")
+        if len([ p for p in stack.pieces if p.player == self ]) < 2:
+            raise GameError("Need two or more pieces to mine")
+        self.on_hand = piece
+        stack.pieces.remove(piece)
+        
     
 ### UTITLITY ##
 
 def game_for(num_players):
     server = Server()
     game = server.create_game("the game")      
+    players = []
     for i in range(num_players):
-        game.join("player %i"%i)
+        p = game.join("player %i"%i)
+        players.append ( p )
+        
+    for p in players:
+        p.set_ready()
     return game
     
 ### TESTS ###
