@@ -29,7 +29,15 @@ class Stack:
         return len(self.pieces)
     
 class Board:
+    """
+    .side : board is side x side big
+    
+    you can iterate over the board or get for each position
+    board[(x,y)]
+    and get a stack 
+    """
     def __init__(self, players):
+        
         self.players = players
         self.stacks = []
         self.positions = {}
@@ -42,12 +50,14 @@ class Board:
         random.shuffle(toset)
         pieces = len(toset)
         side = int(math.ceil(math.sqrt(pieces*1.3)))
+        self.side = side
         empty_positions = [ (x,y) 
                             for x in range(side) 
                             for y in range(side)
                          ]
         
         for player, size in toset:
+            print "1", player, size
             position = random.choice(empty_positions)
             piece = Piece(player, size)
             self.place(piece, position)
@@ -55,16 +65,21 @@ class Board:
             
     def __getitem__(self, key):
         return self.positions.get(key, None)
-    def __getitem__(self, key):
-        return self.positions.get(key, None) 
+        
+    def __setitem__(self, key, value):
+        self.positions[key] = value
         
     def __iter__(self):
         return self.positions.itervalues()
+        
+    def __delitem__(self, key):
+        del self.positions[key]
            
     def place(self, piece, position):
         if not position in self.positions:
             stack = Stack( position )
             self.stacks.append( stack )
+            self.positions[position]=stack
         else:
             stack = self.positions[ position ]
         stack.place( piece )
