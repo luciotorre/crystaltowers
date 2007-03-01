@@ -253,7 +253,12 @@ class Game(StateMixin):
                 d.addCallback(self.sent)
                 hand = p.on_hand
                 d = p.remote_board.callRemote("set_on_hand", hand, all)        
-                
+                d.addCallBack(self.sent)
+                d.addErrback(self.errback)
+            
+    def errback(self, reason):
+        print reason
+        
     def sent(self, *args):
         self.pending_send -= 1
         #print "sent!, pending =", self.pending_send
