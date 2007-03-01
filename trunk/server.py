@@ -1,6 +1,6 @@
 
-from twisted.spread import pbfrom twisted.internet import reactor
-
+from twisted.spread import pb
+from twisted.internet import reactor
 import model
 
 class ServerError(Exception):   pass
@@ -8,7 +8,9 @@ class ServerError(Exception):   pass
 class NetworkServer(pb.Root):
     def __init__(self):
         self.server = model.Server()
-            def remote_games(self):        return [ NetworkGame(g) for g in self.server.games() ]
+        
+    def remote_games(self):
+        return [ NetworkGame(g) for g in self.server.games() ]
 
     def remote_create_game(self, name):
         g = self.server.create_game(name)
@@ -28,6 +30,9 @@ class NetworkGame(pb.Referenceable):
         
     def remote_name(self):
         return self.game.name
+    
+    def remote_get_side(self):
+        return self.game.board.side
         
     def __repr__(self):
         return "< g:"+self.name+">"
@@ -85,6 +90,9 @@ class NetworkPlayer(pb.Referenceable):
         piece = self.player.game.board.piece_map[piece]
         return self.player.mine(stack, piece)
         
-        if __name__ == '__main__':    reactor.listenTCP(9091, pb.PBServerFactory(
+
+if __name__ == '__main__':
+    reactor.listenTCP(9091, pb.PBServerFactory(
                             NetworkServer()
-                        ))    reactor.run()
+                        ))
+    reactor.run()
