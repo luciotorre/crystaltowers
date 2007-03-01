@@ -14,7 +14,7 @@ TOWERCOLOURS = [
     (0.3, 0.8, 0.5, 1.0),
     #(0.8, 0.3, 1.0, 1.0),
 ]
-TOWERSCALES = [ 0.5, 0.7, 1 ]
+TOWERSCALES = [ 0.4, 0.7, 1 ]
 
 
 def main():
@@ -89,7 +89,9 @@ def main():
     for stack in game.board:
         x, z = stack.position
 
-        for y, piece in enumerate(stack.pieces):
+        y = 0
+        lastscale = 0
+        for piece in stack.pieces:
             tower = qgl.scene.Group()
 
             color = piece.player.color
@@ -98,9 +100,14 @@ def main():
 
             scale = TOWERSCALES[piece.size-1]
             tower.scale = [scale]*3
-            tower.translate = (x-game.board.side/2 + ((z%2)*0.5+0.25))*4, -1+scale + y*.5, (z-game.board.side/2)*3.5777087639996634
+
+            if lastscale != 0:
+                y += 3*(lastscale - scale) + 0.3
+
+            tower.translate = (x-game.board.side/2 + ((z%2)*0.5+0.25))*4, -1+scale + y, (z-game.board.side/2)*3.5777087639996634
             tower.add(material, tria)
             group.add(tower)
+            lastscale = scale
 
     #Before the structure can be drawn, it needs to be compiled. To do this, we ask the root node to accept the compiler visitor.
     #If any new nodes are added later in the program, they must also accept the compiler visitor before they can be drawn.
