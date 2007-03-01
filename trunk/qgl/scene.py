@@ -26,6 +26,7 @@ This module contains all possible scene nodes and leaves.
 
 """
 
+from __future__ import division
 import weakref
 
 import Numeric
