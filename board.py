@@ -72,7 +72,7 @@ def main():
     environment.add(light)
     environment.add(group)
 
-    game = model.game_for(4)
+    game = model.random_moved(4) # model.game_for(4)
     for player, color in zip(game.players, TOWERCOLOURS):
         player.color = color
 
