@@ -41,7 +41,7 @@ class RemoteBoard(pb.Referenceable):
     def remote_set_pieces(self, pieces):
         self.pieces = pieces
         
-    def remote_set_on_hand(self, mine, all)
+    def remote_set_on_hand(self, mine, all):
         self.on_hand_all = all
         self.on_hand = mine
         
