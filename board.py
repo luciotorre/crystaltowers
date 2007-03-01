@@ -7,7 +7,7 @@ import qgl
 from OpenGL.GL import *
 from OpenGL.GLU import *
     
-import model
+import client
 import math
 
 class Hexagon(qgl.scene.Leaf):
@@ -98,9 +98,27 @@ def main():
     environment.add(light)
     environment.add(group)
 
-    game = model.random_moved(4) # model.game_for(4)
-    for player, color in zip(game.players, TOWERCOLOURS):
-        player.color = color
+    cl = client.CrystalClient("127.0.0.1")
+    remoteBoard = client.RemoteBoard()
+    players = None
+    try:
+        server = client.waitFor(cl.connect)
+        print client.waitFor(server.callRemote,"games")
+        game = client.waitFor(server.callRemote, "create_game", "g")
+        player = client.waitFor(game.callRemote, "sample_game", 4)
+        players = client.waitFor(game.callRemote, "players")
+        client.waitFor(player.callRemote, "set_board", remoteBoard)
+        client.waitFor(player.callRemote, "set_ready")
+        client.waitFor(game.callRemote, "shuffle")
+        boardSide = client.waitFor(game.callRemote, "get_side")
+        remoteBoard.dump()
+    finally:
+        client.reactor.callFromThread(client.reactor.stop)
+
+    #game = model.random_moved(4) # model.game_for(4)
+
+    #for player, color in zip(game.players, TOWERCOLOURS):
+    #    player.color = color
 
     boardGroup = qgl.scene.Group()
     #boardGroup.axis = (1,0,0)
@@ -115,37 +133,41 @@ def main():
     material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
     boardGroup.add( material )
 
-    for x in range(game.board.side):
-        for z in range(game.board.side):
+    board = remoteBoard.board
+    for x in range(boardSide):
+        for z in range(boardSide):
             square = qgl.scene.Group()
             square.selectable = True
-            square.coordinates = (x,z)
+            square.position = (x,z)
             boardGroup.add(square)
 
-            square.translate = (x-game.board.side/2 + ((z%2)*0.5+0.25))*4, 0, (z-game.board.side/2)*3.5777087639996634
+            square.translate = (x-boardSide/2 + ((z%2)*0.5+0.25))*4, 0, (z-boardSide/2)*3.5777087639996634
             square.angle = 90
             square.axis= 0,1,0
             #quad = qgl.scene.state.Quad( (4, 3.5777087639996634) )
             hex = Hexagon( 2.1 )
             square.add( hex )
 
-    for stack in game.board:
-        for piece in stack.pieces:
-            tower = qgl.scene.Group()
-            tower.piece = piece
-            tower.stack = stack
-            tower.selectable = True
-            piece.tower = tower
+    playerColours = {}
+    for n, playerName in enumerate(players):
+        playerColours[playerName] = TOWERCOLOURS[n]
 
-            scale = TOWERSCALES[piece.size-1]
-            tower.scale = [scale]*3
+    pieces = {}
+    for (pieceId, (playerName, pieceSize, playerId)) in remoteBoard.pieces.iteritems():
+        tower = qgl.scene.Group()
+        tower.id = pieceId
+        tower.selectable = True
+        pieces[pieceId] = tower
 
-            color = piece.player.color
-            darkcolor = (color[0]*0.15, color[1]*0.15, color[2]*0.2, 1.0)
-            material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
+        scale = TOWERSCALES[pieceSize-1]
+        tower.scale = [scale]*3
 
-            tower.add(material, tria)
-            group.add(tower)
+        color = playerColours[playerName]
+        darkcolor = (color[0]*0.15, color[1]*0.15, color[2]*0.2, 1.0)
+        material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
+
+        tower.add(material, tria)
+        group.add(tower)
 
     #Before the structure can be drawn, it needs to be compiled. To do this, we ask the root node to accept the compiler visitor.
     #If any new nodes are added later in the program, they must also accept the compiler visitor before they can be drawn.
@@ -158,17 +180,20 @@ def main():
     lastSelected = None
     while True:
         # place every piece in their own spot
-        for stack in game.board:
-            x, z = stack.position
+        board = remoteBoard.board
+        for (x,z), stack in board.items():
             y = 0
             lastscale = 0
-            for piece in stack.pieces:
-                scale = TOWERSCALES[piece.size-1]
+            for pieceId in stack:
+                piece = pieces[pieceId]
+                piece.position = (x,z)
+                piece.stack = stack
+                scale = piece.scale[0]
 
                 if lastscale != 0:
                     y += 3*(lastscale - scale) + 0.4
 
-                piece.tower.translate = (x-game.board.side/2 + ((z%2)*0.5+0.25))*4, -1+scale + y, (z-game.board.side/2)*3.5777087639996634
+                piece.translate = (x-boardSide/2 + ((z%2)*0.5+0.25))*4, -1+scale + y, (z-boardSide/2)*3.5777087639996634
                 lastscale = scale
             
         position = pygame.mouse.get_pos()
@@ -181,7 +206,7 @@ def main():
             #picker.hits will be a list of nodes which were rendered at the position.
             #to visualise which node was clicked, lets adjust its angle by 10 degrees.
             if len(picker.hits) > 0:
-                pick = picker.hits[0]
+                picked = picker.hits[0]
 
         #process pygame events.
         for event in pygame.event.get():
@@ -191,28 +216,30 @@ def main():
                 return
             elif event.type is MOUSEBUTTONDOWN:
                 if len(picker.hits) > 0:
-                    pick = picker.hits[0]
-                    #pick.angle += 10
-                    if hasattr(pick, "stack"):
-                        if player.on_hand is None:
+                    picked = picker.hits[0]
+                    #picked.angle += 10
+                    if hasattr(picked, "id"):
+                        if remoteBoard.on_hand is None:
                             try:
-                                piece = player.pick(pick.stack)
-                                #pick.angle += 10
-                                print pick, piece
-                            except model.GameError, e:
+                                def gotPiece(p):
+                                    piece = p
+                                    print picked, piece
+                                client.reactor.callFromThread(player.callRemote, "pick", picked.position, picked.id)
+                                #picked.angle += 10
+                            except Exception, e:
                                 print e
                                 pass
                         else:
                             try:
-                                player.cap(pick.stack)
+                                client.reactor.callFromThread(player.callRemote, "cap", picked.position)
                             except model.GameError, e:
                                 print e
                                 pass
                             
-                    elif hasattr(pick, "coordinates"):
+                    elif hasattr(picked, "position"):
                         try:
-                            player.drop(pick.coordinates)
-                        except model.GameError, e:
+                            client.reactor.callFromThread(player.callRemote, "drop", picked.position)
+                        except Exception, e:
                             print e
                             pass
 
