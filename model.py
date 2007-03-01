@@ -1,4 +1,4 @@
-import random, math
+import random, math, string
 import unittest
 
 class GameError(Exception): pass
@@ -24,7 +24,14 @@ class Stack:
         self.pieces.append(piece)
         
     def __repr__(self):
-        return "<stack %s: %s>"%(str(self.position), ",".join([str(p.size) for p in self.pieces]))
+        actions = []
+        if self.splitters():
+            actions.append( "s" )
+        if self.miners():
+            actions.append( "m" )
+        if self.pickers():
+            actions.append( "p" )
+        return "<stack %s:[%s]%s>"%(str(self.position),"/".join(actions) ,",".join([str(p.size)+p.player.code for p in self.pieces]))
         
     def __contains__(self, piece):
         return piece in self.pieces
@@ -34,6 +41,35 @@ class Stack:
         
     def size(self):
         return len(self.pieces)
+        
+    def pickers(self):
+        if self.size()==1:
+            return [self.pieces[0].player]
+        return []
+        
+    def miners(self):
+        if self.size() == 0:
+            return []
+            
+        count = {}
+        for p in self.pieces:
+            count[p.player] = count.get(p.player, 0) + 1
+        
+        owner = self.pieces[-1].player
+        if owner in count:
+            del count[owner]
+            
+        return [ k for k,v in count.items() if v>1 ] 
+            
+        
+    def splitters(self):
+        last = None
+        split = []
+        for p in self.pieces:
+            if p.player == last:
+                split.append( last )
+            last = p.player
+        return split
     
 class Board:
     """
@@ -172,6 +208,9 @@ class Game(StateMixin):
             p.status = p.STATUS_PLAYING
             self.status = self.STATUS_PLAYING
             self.board = Board(self.players)
+            
+        for i,p in enumerate(self.players):
+            p.code = string.lowercase[i]
         return True
         
     def check_done(self):
@@ -328,6 +367,8 @@ class Player(StateMixin):
         self.game.check_blocked()        
         
     def mine(self, stack, piece):
+        if self.on_hand is not None:
+            raise GameError("Cannot hold two pieces")
         if self.status != self.STATUS_PLAYING:
             raise GameError("Cannot Move, wrong status")
         if not piece in stack:
@@ -361,12 +402,17 @@ def random_moved(num_players):
         if len(s.pieces)==1:
             p = s.pieces[0].player
             p.pick(s)
+            capped = False
             for ns in g.board:
+
                 if ns!=s:
                     try:
                         p.cap(ns)
+                        capped = True
                     except GameError:
                         pass
+            if not capped:
+                p.drop(s.position)
     print "cap all"
     g.board.dump()
         
@@ -375,16 +421,21 @@ def random_moved(num_players):
         if s.size() > 3:
             for piece in s.pieces:
                 pl = piece.player
-                for k in [ (x,y) 
-                        for x in range(g.board.side) 
-                        for y in range(g.board.side) ]:
-                    try:
-                        pl.mine(s, piece)
-                        pl.drop(k)
-                    except GameError:
-                        pass
+                mined = False
+                try:
+                    pl.mine(s, piece)
+                    mined = True
+                except GameError:
+                    pass
+                if mined:
+                    for k in [ (x,y) 
+                            for x in range(g.board.side) 
+                            for y in range(g.board.side) ]:
+                        try:
+                            pl.drop(k)
+                        except GameError:
+                            pass
     g.board.dump()    
-    return g
     
     for s in g.board:
         if s.size() > 3:
@@ -398,8 +449,7 @@ def random_moved(num_players):
                     except GameError:
                         pass
     print "split all"
-    for s in g.board:
-        print s
+    g.board.dump()
     
     return g
     
