@@ -65,6 +65,10 @@ class NetworkPlayer(pb.Referenceable):
     def remote_set_board(self, board):
         self.player.remote_board = board
         
+    def remote_on_hand(self):
+        if self.player.on_hand is None: return None
+        return self.player.on_hand.id
+    
     def remote_set_ready(self):
         return self.player.set_ready()
               

@@ -87,6 +87,7 @@ class GameCmd(cmd.Cmd):
     def __init__(self, server, username, callback):
         self.server = server
         self.username = username
+        self.callback = callback
         self.board = RemoteBoard()
             
         self.current = None
@@ -129,13 +130,13 @@ class GameCmd(cmd.Cmd):
             print "must be in game"
             return
         
-        waitFor(player.callRemote, "set_board", self.board)
+        waitFor(self.player.callRemote, "set_board", self.board)
             
         waitFor(self.player.callRemote, "set_ready")
         done = False
         while not done:
             game, players = waitFor(self.current.callRemote, "player_status")
-            if game=="STATUS_PLAYER":
+            if game=="STATUS_PLAYING":
                 done = True
                 break
             print "-"*20
@@ -164,6 +165,7 @@ if __name__ == "__main__":
             time.sleep(100)
         else:
             def fooback(*args):
+                " recibe un NetServer, NetGame, NetPlayer y board como argumentos. "
                 print args
                 
             name = raw_input("Your name?:")
