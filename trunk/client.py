@@ -74,26 +74,106 @@ class CrystalClient:
                     
     def setBoard(self, root):
         return root
-        
-    def reactor_thread(self):        reactor.run(installSignalHandlers=0)
+    
+    def reactor_thread(self):
+        reactor.run(installSignalHandlers=0)
         
     def connect_error(self, *args):
         self.root = 0
 
+import cmd
+
+class GameCmd(cmd.Cmd):
+    def __init__(self, server, username, callback):
+        self.server = server
+        self.username = username
+        self.board = RemoteBoard()
+            
+        self.current = None
+        self.player = None
+        cmd.Cmd.__init__(self)
+        
+    def do_games(self, rest):
+        games = waitFor(self.server.callRemote, "games")
+        for i, game in enumerate(games):
+            print i,":", waitFor(game.callRemote, "name")
+
+            
+    def do_create(self, rest):
+        if not rest:
+            print "create NAME"
+            return
+        game = waitFor(self.server.callRemote, "create_game", rest)
+        player = waitFor(game.callRemote, "join", self.username)
+        self.current = game
+        self.player = player
+        
+    def do_players(self, rest):
+        if not self.current:
+            print "must be in game"
+            return
+        for name in waitFor(self.current.callRemote, "players"):
+            print name
+            
+    def do_join(self, rest):
+        what = int(rest)
+        if self.current:
+            print "not while inside a game"
+            return
+        game = waitFor(self.server.callRemote, "games")[ what ]
+        self.player = waitFor(game.callRemote, "join", self.username)
+        self.current = game
+        
+    def do_ready(self, rest):
+        if not self.current:
+            print "must be in game"
+            return
+        
+        waitFor(player.callRemote, "set_board", self.board)
+            
+        waitFor(self.player.callRemote, "set_ready")
+        done = False
+        while not done:
+            game, players = waitFor(self.current.callRemote, "player_status")
+            if game=="STATUS_PLAYER":
+                done = True
+                break
+            print "-"*20
+            print "Game Status:", game
+            print "Player Status:"
+            for pl,st in players:
+                print "\t", pl,":", st
+            time.sleep(2)
+        self.callback(self.server, self.current, self.player, self.board)
         
         
 if __name__ == "__main__":
-    cl = CrystalClient("127.0.0.1")
+    test = 0
     try:
-        board = RemoteBoard()
-        server = waitFor(cl.connect)
-        game = waitFor(server.callRemote, "create_game", "g")
-        player = waitFor(game.callRemote, "sample_game", 4)
-        waitFor(player.callRemote, "set_board", board)
-        waitFor(player.callRemote, "set_ready")
-        waitFor(game.callRemote, "shuffle")
-        board.dump()
-        time.sleep(100)
+        if test:
+            cl = CrystalClient("127.0.0.1")
+    
+            board = RemoteBoard()
+            server = waitFor(cl.connect)
+            game = waitFor(server.callRemote, "create_game", "g")
+            player = waitFor(game.callRemote, "sample_game", 4)
+            waitFor(player.callRemote, "set_board", board)
+            waitFor(player.callRemote, "set_ready")
+            waitFor(game.callRemote, "shuffle")
+            board.dump()
+            time.sleep(100)
+        else:
+            def fooback(*args):
+                print args
+                
+            name = raw_input("Your name?:")
+            ip = raw_input("Server IP? (default localhost):")
+            if not ip: ip = "127.0.0.1"
+            cl = CrystalClient(ip)
+            server = waitFor(cl.connect)
+            cmdserver = GameCmd(server, name, fooback)
+            cmdserver.cmdloop()
+            
     finally:
         reactor.callFromThread(reactor.stop)
         

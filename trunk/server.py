@@ -23,6 +23,10 @@ class NetworkGame(pb.Referenceable):
         
     def remote_players(self):
         return [ p.name for p in self.game.players ]
+
+    def remote_player_status(self):
+        return (self.game.state_repr(),
+                    [ (p.name, p.state_repr()) for p in self.game.players ])
         
     def remote_join(self, name):
         player = self.game.join(name)
