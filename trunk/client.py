@@ -87,7 +87,6 @@ if __name__ == "__main__":
     try:
         board = RemoteBoard()
         server = waitFor(cl.connect)
-        print waitFor(server.callRemote,"games")
         game = waitFor(server.callRemote, "create_game", "g")
         player = waitFor(game.callRemote, "sample_game", 4)
         waitFor(player.callRemote, "set_board", board)
