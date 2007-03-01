@@ -251,6 +251,7 @@ class Game(StateMixin):
                 print "Queue for", p.name
                 d = p.remote_board.callRemote("set_board", board_map)
                 d.addCallback(self.sent)
+                continue
                 hand = p.on_hand
                 d = p.remote_board.callRemote("set_on_hand", hand, all)        
                 d.addCallback(self.sent)
