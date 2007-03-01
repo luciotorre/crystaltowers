@@ -32,12 +32,18 @@ class RemoteBoard(pb.Referenceable):
     def __init__(self):
         self.board = None
         self.pieces = None
+        self.on_hand_all = None
+        self.on_hand = None
         
     def remote_set_board(self, board):
         self.board = board
         
     def remote_set_pieces(self, pieces):
         self.pieces = pieces
+        
+    def remote_set_on_hand(self, mine, all)
+        self.on_hand_all = all
+        self.on_hand = mine
         
     def dump(self):
         if not self.board: return
