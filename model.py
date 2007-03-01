@@ -243,12 +243,16 @@ class Game(StateMixin):
     def moved(self):
         board_map = self.get_board_map()
         
+        all = [ (p.on_hand, p.name) for p in self.players ]
+        
         for p in self.players:
             if p.remote_board:
                 self.pending_send += 1
                 print "Queue for", p.name
                 d = p.remote_board.callRemote("set_board", board_map)
                 d.addCallback(self.sent)
+                hand = p.on_hand
+                d = p.remote_board.callRemote("set_on_hand", hand, all)        
                 
     def sent(self, *args):
         self.pending_send -= 1
