@@ -4,73 +4,15 @@ import unittest
 class GameError(Exception): pass
 
 class Piece:
-    def __init__(self, player, size):
+    def __init__(self, player, size, id):
+        self.id = id
         self.player = player
         self.size = size
         
-    
-class Stack:
-    def __init__(self, where):
-        self.position = where
-        self.pieces = []
-        
-    def place(self, piece):
-        if self.pieces:
-            if self.pieces[-1].player == piece.player:
-                raise GameError("Cannot place over your pieces")
-            if self.pieces[-1].size < piece.size:
-                raise GameError("Cannot place over smaller pieces")
-        
-        self.pieces.append(piece)
-        
     def __repr__(self):
-        actions = []
-        if self.splitters():
-            actions.append( "s" )
-        if self.miners():
-            actions.append( "m" )
-        if self.pickers():
-            actions.append( "p" )
-        return "<stack %s:[%s]%s>"%(str(self.position),"/".join(actions) ,",".join([str(p.size)+p.player.code for p in self.pieces]))
+        return "%i%s"%(self.size, self.player.code)
+
         
-    def __contains__(self, piece):
-        return piece in self.pieces
-        
-    def pop(self):
-        return self.pieces.pop()
-        
-    def size(self):
-        return len(self.pieces)
-        
-    def pickers(self):
-        if self.size()==1:
-            return [self.pieces[0].player]
-        return []
-        
-    def miners(self):
-        if self.size() == 0:
-            return []
-            
-        count = {}
-        for p in self.pieces:
-            count[p.player] = count.get(p.player, 0) + 1
-        
-        owner = self.pieces[-1].player
-        if owner in count:
-            del count[owner]
-            
-        return [ k for k,v in count.items() if v>1 ] 
-            
-        
-    def splitters(self):
-        last = None
-        split = []
-        for p in self.pieces:
-            if p.player == last:
-                split.append( last )
-            last = p.player
-        return split
-    
 class Board:
     """
     .side : board is side x side big
@@ -82,6 +24,7 @@ class Board:
     def __init__(self, players):
         self.players = players
         self.positions = {}
+        self.piece_map = {}
         
         toset = [ (player, size) 
                     for player in players
@@ -97,10 +40,13 @@ class Board:
                             for y in range(side)
                          ]
         
+        piece_count = 0
         for player, size in toset:
             position = random.choice(empty_positions)
-            piece = Piece(player, size)
-            self.place(piece, position)
+            piece = Piece(player, size, piece_count)
+            self.place(position, piece)
+            self.piece_map[piece_count]=piece
+            piece_count += 1
             empty_positions.remove(position)
             
     def dump(self):
@@ -108,9 +54,9 @@ class Board:
         count = 0
         print "Stacks:"
         
-        for stack in self:
-            print stack
-            total += stack.size()
+        for where, stack in self.positions.items():
+            print where, ":", stack
+            total += len(stack)
             count += 1
             
         print "Pieces:", total
@@ -123,20 +69,54 @@ class Board:
         self.positions[key] = value
         
     def __iter__(self):
-        for v in self.positions.values():
-            if v is not None:
-                yield v
+        return self.positions.iteritems()
         
     def __delitem__(self, key):
         del self.positions[key]
+        
+    def __contains__(self, key):
+        return key in self.positions
            
-    def place(self, piece, position):
+    def place(self, position, piece):
         if not position in self.positions or self.positions[position] is None:
-            stack = Stack( position )
-            self.positions[position]=stack
+            self.positions[position]=[piece]
         else:
-            stack = self.positions[ position ]
-        stack.place( piece )
+            stack = self.positions[position]
+            if stack[-1].player == piece.player:
+                raise GameError("Cannot place over your pieces")
+            if stack[-1].size < piece.size:
+                raise GameError("Cannot place over smaller pieces")
+        
+            stack.append( piece )
+                    
+    def pick(self, where, piece):
+        if not where in self.positions:
+            raise GameError("Cannot pick from nowhere")
+        
+        stack = self.positions[where]
+        
+        if not piece in stack:
+            raise GameError("Piece not there to pick up")
+            
+        stack.remove(piece)
+        
+        if not stack:
+            del self.positions[where]
+        
+        return piece
+            
+    def split(self, where_from, piece, where_to):
+        #print "%"*200
+        #self.dump()
+        stack_from = self.positions[where_from]
+        pos = stack_from.index(piece)
+        self.positions[where_to] = stack_from[pos:]
+        self.positions[where_from] = stack_from[:pos]
+        #print "*"*200
+        #self.dump()
+        #print "-"*100
+   
+        
             
        
 class Server:
@@ -187,6 +167,7 @@ class Game(StateMixin):
         self.players = []
         self.board = None
         self.winner = None
+        self.pending_send = 0
         
     def join(self, name):
         if self.status == self.STATUS_WAITING:
@@ -200,10 +181,11 @@ class Game(StateMixin):
         if not self.status == self.STATUS_WAITING:
             return False
             
-        for p in self.players:
-            if not p.status == p.STATUS_READY:
-                return False
-        
+        ready = sum([ 1 for p in self.players if p.status == p.STATUS_READY ])
+        print "players ready:", ready, "of", len(self.players)
+        if ready != len(self.players):
+            return False
+                    
         for p in self.players:
             p.status = p.STATUS_PLAYING
             self.status = self.STATUS_PLAYING
@@ -211,6 +193,7 @@ class Game(StateMixin):
             
         for i,p in enumerate(self.players):
             p.code = string.lowercase[i]
+        self.send_all()
         return True
         
     def check_done(self):
@@ -247,10 +230,43 @@ class Game(StateMixin):
             if allgone:
                 self.status = self.STATUS_DONE
                 self.server.kill(self)
+             
+    def send_all(self):
+        board_map = self.get_board_map()
+        pieces_map = self.get_piece_map()
+        
+        for p in self.players:
+            if p.remote_board:
+                d = p.remote_board.callRemote("set_pieces", pieces_map)
+                d = p.remote_board.callRemote("set_board", board_map)
+       
+    def moved(self):
+        board_map = self.get_board_map()
+        
+        for p in self.players:
+            if p.remote_board:
+                self.pending_send += 1
+                print "Queue for", p.name
+                d = p.remote_board.callRemote("set_board", board_map)
+                d.addCallback(self.sent)
                 
-    def check_blocked(self):
-        pass
+    def sent(self, *args):
+        self.pending_send -= 1
+        #print "sent!, pending =", self.pending_send
                 
+                
+    def get_board_map(self):
+        result = {}
+        for location, stack in self.board:
+            result[location] = [ p.id for p in stack ]
+            
+        return result
+        
+    def get_piece_map(self):
+        result = {}
+        for id, piece in self.board.piece_map.items():
+            result[id]=(piece.player.name, piece.size, piece.player.code)
+        return result
         
     
 class Player(StateMixin):
@@ -274,6 +290,7 @@ class Player(StateMixin):
         self.name = name
         self.game = game
         self.on_hand = None
+        self.remote_board = None
     
     def set_ready(self):
         if self.status in (self.STATUS_READY, self.STATUS_WAIT):
@@ -301,85 +318,92 @@ class Player(StateMixin):
         self.status = self.STATUS_LEFT
         self.game.left(self)
         
-    def pick(self, stack):
+    def pick(self, where):
         if self.status != self.STATUS_PLAYING:
             raise GameError("Cannot Move, wrong status")
         if self.on_hand is not None:
             raise GameError("Cannot hold two pieces")
-        if stack.size() != 1:
+            
+        stack = self.game.board[where]
+        if len(stack) != 1:
             raise GameError("Canot pick from stack with many pieces")
-        if stack.pieces[0].player != self:
+        if stack[0].player != self:
             raise GameError("Cannot pick another players pieces")
-        piece = stack.pop()
+        piece = self.game.board.pick(where, stack[0])
         self.on_hand = piece    
-        if stack.pieces == []:  
-            self.game.board[stack.position] = None
-        self.game.check_blocked()
+        self.game.moved()
         
-    def cap(self, stack):
+    def cap(self, where):
         if self.status != self.STATUS_PLAYING:
             raise GameError("Cannot Move, wrong status")
         if self.on_hand is None:
             raise GameError("Cannot cap without a piece")
-        stack.place(self.on_hand)
+            
+        self.game.board.place(where, self.on_hand)
         self.on_hand = None
-        self.game.check_blocked()
+        self.game.moved()
             
     def drop(self, where):
         if self.status != self.STATUS_PLAYING:
             raise GameError("Cannot Move, wrong status")
         if self.on_hand is None:
             raise GameError("Nothing to drop")
-        stack = self.game.board[where]
-        if stack is None:
-            self.game.board.place(self.on_hand, where)
-            self.on_hand = None
-            return True
-        
-        if stack.size() != 0:
-            raise GameError("Cannot drop, there are pieces there already") 
             
-        self.cap(stack)
-        return True
+        stack = self.game.board[where]
+        
+        if stack is None:
+            self.game.board.place(where, self.on_hand)
+            self.on_hand = None
+            self.game.moved()
+            return True
+        else:
+            raise GameError("Cannot drop, there are pieces there already") 
         
         
-    def split(self, stack, piece, where):
+    def split(self, where_from, piece, where_to):
         if self.status != self.STATUS_PLAYING:
             raise GameError("Cannot Move, wrong status")
-        if len([ p for p in stack.pieces if p.player == self ]) < 2:
+            
+        stack = self.game.board[where_from]
+        
+        if len([ p for p in stack if p.player == self ]) < 2:
             raise GameError("Need two or more pieces to split")
         if not piece in stack:
             raise GameError("Piece is not There") 
-        pos = stack.pieces.index(piece)
+            
+        pos = stack.index(piece)
         if pos == 0:
             raise GameError("cannot split from bottom piece")
-        if not stack.pieces[pos-1].player == self:
+        if not stack[pos-1].player == self:
             raise GameError("The piece below must be yours to split")
-        new_stack = self.game.board[where]
-        if new_stack is None:
-            new_stack = Stack(where)
-        elif len(new_stack.pieces) != 0:
+            
+        new_stack = self.game.board[where_to]
+        if new_stack is not None:
             raise GameError("Cant place on busy tile")
         
-        new_stack.pieces = stack.pieces[pos:]
-        stack.pieces = stack.pieces[:pos]
-        self.game.board[where] = new_stack
-        self.game.check_blocked()        
+        self.game.board.split(where_from, piece, where_to)
         
-    def mine(self, stack, piece):
+        self.game.moved()        
+        
+    def mine(self, where, piece):
         if self.on_hand is not None:
             raise GameError("Cannot hold two pieces")
         if self.status != self.STATUS_PLAYING:
             raise GameError("Cannot Move, wrong status")
+            
+        stack = self.game.board[where]
+        
         if not piece in stack:
             raise GameError("Piece is not There")
-        if stack.pieces[-1].player == self:
+        if stack[-1].player == self:
             raise GameError("Cannot mine a tower you own")
-        if len([ p for p in stack.pieces if p.player == self ]) < 2:
+            
+        if len([ p for p in stack if p.player == self ]) < 2:
             raise GameError("Need two or more pieces to mine")
+            
         self.on_hand = piece
-        stack.pieces.remove(piece)
-        self.game.check_blocked()
+        self.game.board.pick(where, piece)
+        self.game.moved()
         
     
 ### UTITLITY ##
@@ -396,34 +420,42 @@ def game_for(num_players):
         p.set_ready()
     return game
     
-def random_moved(num_players):
-    g = game_for(num_players)
-    for s in g.board:
-        if len(s.pieces)==1:
-            p = s.pieces[0].player
-            p.pick(s)
+def random_moved(game):
+    g = game
+    g.board.dump()
+    
+    side = g.board.side
+    positions = [ (x,y) for x in range(side) for y in range(side) ]
+    for where in positions:
+        if where in g.board and len(g.board[where])==1:
+            p = g.board[where][0].player
+            p.pick(where)
             capped = False
-            for ns in g.board:
-
-                if ns!=s:
+            for where_to in positions:
+                if where_to!=where:
                     try:
-                        p.cap(ns)
+                        p.cap(where_to)
                         capped = True
-                    except GameError:
+                    except GameError, e:
                         pass
             if not capped:
-                p.drop(s.position)
+                p.drop(where)
+            else:
+                pass#break 
+        
+       
     print "cap all"
     g.board.dump()
         
     print "mine all"
-    for s in g.board:
-        if s.size() > 3:
-            for piece in s.pieces:
+    for where in positions:
+        s = g.board[where]
+        if s and len(s) > 3:
+            for piece in s:
                 pl = piece.player
                 mined = False
                 try:
-                    pl.mine(s, piece)
+                    pl.mine(where, piece)
                     mined = True
                 except GameError:
                     pass
@@ -433,21 +465,30 @@ def random_moved(num_players):
                             for y in range(g.board.side) ]:
                         try:
                             pl.drop(k)
+                            #break
                         except GameError:
                             pass
     g.board.dump()    
-    
-    for s in g.board:
-        if s.size() > 3:
-            for piece in s.pieces:
+    #return g
+    print "readytosplit"
+    for where in positions:
+        s = g.board[where]
+        splat = False
+        if s and len(s) > 3:
+            for piece in s:
                 pl = piece.player
                 for k in [ (x,y) 
                         for x in range(g.board.side) 
                         for y in range(g.board.side) ]:
                     try:
-                        pl.split(s, piece, k)
-                    except GameError:
+                        pl.split(where, piece, k)
+                        splat = True
+                        break
+                    except GameError, e:
                         pass
+        #if splat: break
+        #break
+                    
     print "split all"
     g.board.dump()
     
