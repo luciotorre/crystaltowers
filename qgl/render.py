@@ -447,7 +447,6 @@ class Render(Visitor):
                 glEnable(GL_TEXTURE_2D)
                 glBindTexture(GL_TEXTURE_2D, leaf.texture.id)
             elif leaf.__class__ is state.Color:
-                print "setting colour", leaf.rgba
                 glColor4f(leaf.rgba[0], leaf.rgba[1], leaf.rgba[2], leaf.rgba[3])
             elif leaf.__class__ is state.Material:
                 glMaterial(GL_FRONT, GL_AMBIENT, leaf.ambient)
