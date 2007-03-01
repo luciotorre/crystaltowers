@@ -102,7 +102,7 @@ def main():
             tower.scale = [scale]*3
 
             if lastscale != 0:
-                y += 3*(lastscale - scale) + 0.3
+                y += 3*(lastscale - scale) + 0.4
 
             tower.translate = (x-game.board.side/2 + ((z%2)*0.5+0.25))*4, -1+scale + y, (z-game.board.side/2)*3.5777087639996634
             tower.add(material, tria)
