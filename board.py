@@ -3,12 +3,30 @@ import pygame
 import random
 from pygame.locals import *
 
+try:
+    import pygame.fastevent as eventmodule
+except ImportError:
+    import pygame.event as eventmodule
+
 import qgl
 from OpenGL.GL import *
 from OpenGL.GLU import *
     
-import client
+from twisted.internet import threadedselectreactor
+threadedselectreactor.install()
+from twisted.internet import reactor
+from twisted.spread import pb
+
+from client import RemoteBoard
 import math
+
+TWISTEDEVENT = USEREVENT
+
+def postTwistedEvent(func):
+    # if not using pygame.fastevent, this can explode if the queue
+    # fills up.. so that's bad.  Use pygame.fastevent, in pygame CVS
+    # as of 2005-04-18.
+    eventmodule.post(eventmodule.Event(TWISTEDEVENT, iterateTwisted=func))
 
 class Hexagon(qgl.scene.Leaf):
     def __init__(self, r):
@@ -44,9 +62,19 @@ TOWERSCALES = [ 0.4, 0.7, 1 ]
 def main():
     #setup pygame as normal, making sure to include the OPENGL flag in the init function arguments.
     pygame.init()
+    if hasattr(eventmodule, 'init'):
+        eventmodule.init()
+    
     flags =  OPENGL|DOUBLEBUF|HWSURFACE
     pygame.display.set_mode((800,600), flags)
-    
+
+    # send an event when twisted wants attention
+    reactor.interleave(postTwistedEvent)
+    # make shouldQuit a True value when it's safe to quit
+    # by appending a value to it.  This ensures that
+    # Twisted gets to shut down properly.
+    shouldQuit = []
+    reactor.addSystemEventTrigger('after', 'shutdown', shouldQuit.append, True)
     
     #Create two visitors.
     #The compiler visitor is used to change a Node object into a set of OpenGL draw commands. More on nodes later.
@@ -70,10 +98,6 @@ def main():
     #using the group.translate attribute. Any objects drawn at a depth (z) of 0.0 in a perspective viewport will not be show.
     group.translate = (0.0,-10.0,-50)
     
-    #leaves are added to the group. The texture leaf loads a texture image ready for drawing. Any sphere leaves, which are drawn 
-    #after a texture leaf will be rendered with the texture image. Sphere has 1 argument, which is the sphere radius, and two keywords
-    #which control how many segments are used to approximate the sphere.
-    sphere = qgl.scene.state.Sphere(1, x_segments=16, y_segments=16)
     towerTriangles = [
         [(0,2,0), (-1,-1,-1), (1,-1,-1)],
         [(0,2,0), (1,-1,-1), (1,-1,1)],
@@ -98,22 +122,23 @@ def main():
     environment.add(light)
     environment.add(group)
 
-    cl = client.CrystalClient("127.0.0.1")
-    remoteBoard = client.RemoteBoard()
-    players = None
+#    cl = client.CrystalClient("127.0.0.1")
+    remoteBoard = RemoteBoard()
     try:
-        server = client.waitFor(cl.connect)
-        print client.waitFor(server.callRemote,"games")
-        game = client.waitFor(server.callRemote, "create_game", "g")
-        player = client.waitFor(game.callRemote, "sample_game", 4)
-        players = client.waitFor(game.callRemote, "players")
-        client.waitFor(player.callRemote, "set_board", remoteBoard)
-        client.waitFor(player.callRemote, "set_ready")
-        client.waitFor(game.callRemote, "shuffle")
-        boardSide = client.waitFor(game.callRemote, "get_side")
-        remoteBoard.dump()
+#        server = client.waitFor(cl.connect)
+#        print client.waitFor(server.callRemote,"games")
+#        game = client.waitFor(server.callRemote, "create_game", "g")
+#        player = client.waitFor(game.callRemote, "sample_game", 4)
+#        players = client.waitFor(game.callRemote, "players")
+#        client.waitFor(player.callRemote, "set_board", remoteBoard)
+#        client.waitFor(player.callRemote, "set_ready")
+#        client.waitFor(game.callRemote, "shuffle")
+#        boardSide = client.waitFor(game.callRemote, "get_side")
+#        remoteBoard.dump()
+        pass
     finally:
-        client.reactor.callFromThread(client.reactor.stop)
+#        client.reactor.callFromThread(client.reactor.stop)
+        pass
 
     #game = model.random_moved(4) # model.game_for(4)
 
@@ -127,51 +152,87 @@ def main():
     #texture = qgl.scene.state.Texture("art/board.jpg")
     #boardGroup.add(texture)
     group.add(boardGroup)
-
-    color = (0.2, 0.2, 0.2, 1)
-    darkcolor = (0.2, 0.2, 0.2, 1)
-    material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
-    boardGroup.add( material )
-
-    board = remoteBoard.board
-    for x in range(boardSide):
-        for z in range(boardSide):
-            square = qgl.scene.Group()
-            square.selectable = True
-            square.position = (x,z)
-            boardGroup.add(square)
-
-            square.translate = (x-boardSide/2 + ((z%2)*0.5+0.25))*4, 0, (z-boardSide/2)*3.5777087639996634
-            square.angle = 90
-            square.axis= 0,1,0
-            #quad = qgl.scene.state.Quad( (4, 3.5777087639996634) )
-            hex = Hexagon( 2.1 )
-            square.add( hex )
-
-    playerColours = {}
-    for n, playerName in enumerate(players):
-        playerColours[playerName] = TOWERCOLOURS[n]
-
-    pieces = {}
-    for (pieceId, (playerName, pieceSize, playerId)) in remoteBoard.pieces.iteritems():
-        tower = qgl.scene.Group()
-        tower.id = pieceId
-        tower.selectable = True
-        pieces[pieceId] = tower
-
-        scale = TOWERSCALES[pieceSize-1]
-        tower.scale = [scale]*3
-
-        color = playerColours[playerName]
-        darkcolor = (color[0]*0.15, color[1]*0.15, color[2]*0.2, 1.0)
-        material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
-
-        tower.add(material, tria)
-        group.add(tower)
-
     #Before the structure can be drawn, it needs to be compiled. To do this, we ask the root node to accept the compiler visitor.
     #If any new nodes are added later in the program, they must also accept the compiler visitor before they can be drawn.
     root_node.accept(compiler)
+    
+    pieces = {}
+    def buildBoard(remoteBoard, boardGroup):
+        color = (0.2, 0.2, 0.2, 1)
+        darkcolor = (0.2, 0.2, 0.2, 1)
+        material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
+        boardGroup.add( material )
+
+        board = remoteBoard.board
+        hex = Hexagon( 2.1 )
+        for x in range(remoteBoard.side):
+            for z in range(remoteBoard.side):
+                cell = qgl.scene.Group()
+                cell.selectable = True
+                cell.position = (x,z)
+                boardGroup.add(cell)
+
+                cell.translate = (x-remoteBoard.side/2 + ((z%2)*0.5+0.25))*4, 0, (z-remoteBoard.side/2)*3.5777087639996634
+                cell.angle = 90
+                cell.axis= 0,1,0
+                #quad = qgl.scene.state.Quad( (4, 3.5777087639996634) )
+                cell.add( hex )
+
+        playerColours = {}
+        for n, playerName in enumerate(players):
+            playerColours[playerName] = TOWERCOLOURS[n]
+
+        for (pieceId, (playerName, pieceSize, playerId)) in remoteBoard.pieces.iteritems():
+            pyramid = qgl.scene.Group()
+            pyramid.id = pieceId
+            pyramid.selectable = True
+            pieces[pieceId] = pyramid
+
+            scale = TOWERSCALES[pieceSize-1]
+            pyramid.scale = [scale]*3
+
+            color = playerColours[playerName]
+            darkcolor = (color[0]*0.15, color[1]*0.15, color[2]*0.2, 1.0)
+            material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
+
+            pyramid.add(material, tria)
+            group.add(pyramid)
+
+        boardGroup.accept(compiler)
+
+    global server
+    server = None
+    global players
+    players = None
+    def gotServer(srv):
+        global server
+        server = srv
+        server.callRemote("create_game", "g").addCallback(gotGame)
+    def gotGame(game):
+        global server
+        server.game = game
+        game.callRemote("sample_game", 4).addCallback(gotPlayer)
+    def gotPlayer(player):
+        server.player = player
+        player.callRemote("set_board", remoteBoard).addCallback(boardSet)
+    def boardSet(*a):
+        server.player.callRemote("set_ready").addCallback(playerReady)
+    def playerReady(*a):
+        server.game.callRemote("shuffle").addCallback(boardShuffled)
+    def boardShuffled(*a):
+        server.game.callRemote("players").addCallback(gotPlayers)
+    def gotPlayers(plys):
+        global players
+        players = plys
+        server.game.callRemote("get_side").addCallback(gotSide)
+    def gotSide(side):
+        remoteBoard.side = side
+        buildBoard(remoteBoard, boardGroup)
+
+    factory = pb.PBClientFactory() 
+    reactor.connectTCP("127.0.0.1", 9091, factory)
+    d = factory.getRootObject().addCallback(gotServer)
+    
     clock = pygame.time.Clock()
 
     piece = None
@@ -179,22 +240,23 @@ def main():
     lastPosition = None
     lastSelected = None
     while True:
-        # place every piece in their own spot
-        board = remoteBoard.board
-        for (x,z), stack in board.items():
-            y = 0
-            lastscale = 0
-            for pieceId in stack:
-                piece = pieces[pieceId]
-                piece.position = (x,z)
-                piece.stack = stack
-                scale = piece.scale[0]
+        if remoteBoard.side is not None:
+            # place every piece in their own spot
+            board = remoteBoard.board
+            for (x,z), stack in board.items():
+                y = 0
+                lastscale = 0
+                for pieceId in stack:
+                    piece = pieces[pieceId]
+                    piece.position = (x,z)
+                    piece.stack = stack
+                    scale = piece.scale[0]
 
-                if lastscale != 0:
-                    y += 3*(lastscale - scale) + 0.4
+                    if lastscale != 0:
+                        y += 3*(lastscale - scale) + 0.4
 
-                piece.translate = (x-boardSide/2 + ((z%2)*0.5+0.25))*4, -1+scale + y, (z-boardSide/2)*3.5777087639996634
-                lastscale = scale
+                    piece.translate = (x-remoteBoard.side/2 + ((z%2)*0.5+0.25))*4, -1+scale + y, (z-remoteBoard.side/2)*3.5777087639996634
+                    lastscale = scale
             
         position = pygame.mouse.get_pos()
         if position != lastPosition:
@@ -209,14 +271,20 @@ def main():
                 picked = picker.hits[0]
 
         #process pygame events.
-        for event in pygame.event.get():
+        for event in eventmodule.get():
+
+            if event.type == TWISTEDEVENT:
+                event.iterateTwisted()
+                if shouldQuit:
+                    return
             if event.type is QUIT:
-                return
+                reactor.stop()
             elif event.type is KEYDOWN and event.key is K_ESCAPE:
-                return
+                reactor.stop()
             elif event.type is MOUSEBUTTONDOWN:
                 if len(picker.hits) > 0:
                     picked = picker.hits[0]
+                    print picked
                     #picked.angle += 10
                     if hasattr(picked, "id"):
                         if remoteBoard.on_hand is None:
@@ -224,21 +292,23 @@ def main():
                                 def gotPiece(p):
                                     piece = p
                                     print picked, piece
-                                client.reactor.callFromThread(player.callRemote, "pick", picked.position, picked.id)
+                                #client.reactor.callFromThread(player.callRemote, "pick", picked.position, picked.id)
+                                server.player.callRemote("pick", picked.position).addCallback(gotPiece)
                                 #picked.angle += 10
                             except Exception, e:
                                 print e
                                 pass
                         else:
                             try:
-                                client.reactor.callFromThread(player.callRemote, "cap", picked.position)
+                                pass
+                                server.player.callRemote("cap", picked.position)
                             except model.GameError, e:
                                 print e
                                 pass
                             
                     elif hasattr(picked, "position"):
                         try:
-                            client.reactor.callFromThread(player.callRemote, "drop", picked.position)
+                            server.player.callRemote("drop", picked.position)
                         except Exception, e:
                             print e
                             pass
@@ -258,4 +328,4 @@ def main():
 
 
 main()
-
+pygame.quit()
