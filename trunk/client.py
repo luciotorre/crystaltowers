@@ -1,5 +1,7 @@
 from twisted.spread import pb
-from twisted.python.failure import Failurefrom twisted.internet import reactor, deferfrom twisted.python import util
+from twisted.python.failure import Failure
+from twisted.internet import reactor, defer
+from twisted.python import util
 import time, sys
 import threading
 import Queue
@@ -34,6 +36,7 @@ class RemoteBoard(pb.Referenceable):
         self.pieces = None
         self.on_hand_all = None
         self.on_hand = None
+        self.side = None
         
     def remote_set_board(self, board):
         self.board = board
