@@ -13,28 +13,53 @@ from twisted.internet import task
 
 from client import RemoteBoard
 import math
+import euclid
 
-class Hexagon(qgl.scene.Leaf):
+class HexagonNode(qgl.scene.Leaf):
     def __init__(self, r):
         s=math.sin(math.radians(60))*r
         self.vertices = (0,0,0), (r,0,0), (r/2,0,s), (-r/2,0,s), (-r,0,0), (-r/2,0,-s), (r/2,0,-s), (r,0,0)
 
     def compile(self):
-        lst = qgl.render.GLDisplayList()
-        glNewList(lst.id, GL_COMPILE)
+        self.list = qgl.render.GLDisplayList()
+        glNewList(self.list.id, GL_COMPILE)
         glBegin(GL_TRIANGLE_FAN)
         glNormal3dv( (0.0, 0.0, -1.0) )
         for vertices in self.vertices:
             glVertex3dv(vertices)
         glEnd()
         glEndList()
-        self.list = lst
+
+    def execute(self):
+        glCallList(self.list.id)
+
+class TriangleListNode(qgl.scene.Leaf):
+    def __init__(self, vertices):
+        self.vertices = []
+
+        self.normals = []
+        for triangleVertices in vertices:
+            v1, v2, v3 = [ euclid.Point3(*v) for v in triangleVertices ]
+            normal=(v3-v2).cross(v2-v1).normalized()
+            self.normals.append(normal)
+            self.vertices.append(triangleVertices)
+
+    def compile(self):
+        self.list = qgl.render.GLDisplayList()
+        glNewList(self.list.id, GL_COMPILE)
+        glBegin(GL_TRIANGLES)
+        for normal, vertices in zip(self.normals, self.vertices):
+            glNormal3dv(normal)
+            for v in vertices:
+                glVertex3dv(v)
+        glEnd()
+        glEndList()
 
     def execute(self):
         glCallList(self.list.id)
 
 
-TOWERCOLOURS = [
+TOWER_COLOURS = [
     (1.0, 0.0, 0.0, 1.0),
     (0.0, 0.8, 0.0, 1.0),
     (0.3, 0.3, 1.0, 1.0),
@@ -42,17 +67,18 @@ TOWERCOLOURS = [
     (0.3, 0.8, 0.5, 1.0),
     (0.8, 0.3, 1.0, 1.0),
 ]
-TOWERSCALES = [ 0.4, 0.7, 1 ]
+TOWER_SCALES = [ 0.4, 0.7, 1 ]
+FPS=30
+WINDOW_SIZE=(800,600)
 
 
 def main():
     #setup pygame as normal, making sure to include the OPENGL flag in the init function arguments.
     pygame.init()
-    
     flags =  OPENGL|DOUBLEBUF|HWSURFACE
-    pygame.display.set_mode((800,600), flags)
+    pygame.display.set_mode(WINDOW_SIZE, flags)
 
-    #Create two visitors.
+    #Create the visitors.
     #The compiler visitor is used to change a Node object into a set of OpenGL draw commands. More on nodes later.
     compiler = qgl.render.Compiler()
     #The render visitor is used to execute compiled commands.
@@ -63,24 +89,27 @@ def main():
     #the root node is the root of the tree structure (also called a scene graph). Branches get added to the root. 
     root_node = qgl.scene.Root()
     
-    #every root node must have a viewport branch, which specified which area of the screen to draw to.
+    #every root node must have a viewport branch, which specifies which area of the screen to draw to.
     #the PersepctiveViewport renders all its children in a 3d view.
     viewport = qgl.scene.PerspectiveViewport()
-    viewport.screen_dimensions = (0,0,800,600)
+    viewport.screen_dimensions = (0,0) + WINDOW_SIZE
     
     #a group node can translate, rotate and scale its children. it can also contain leaves, which are drawable things.
     group = qgl.scene.Group()
     #because this group will be displayed in 3d, using a PerspectiveViewport, it makes sense to move it into the screen
     #using the group.translate attribute. Any objects drawn at a depth (z) of 0.0 in a perspective viewport will not be show.
-    group.translate = (0.0,-10.0,-50)
+    group.translate = ( 0.0, -10.0, -50 )
+    #the group node has attributes that can be changed to manipulate the position of its children.
+    group.axis = (0,1,0)
+    group.angle = 45
     
-    towerTriangles = [
+    pyramidTriangles = [
         [(0,2,0), (-1,-1,-1), (1,-1,-1)],
         [(0,2,0), (1,-1,-1), (1,-1,1)],
         [(0,2,0), (1,-1,1), (-1,-1,1)],
         [(0,2,0), (-1,-1,1), (-1,-1,-1)],
     ]
-    tria = qgl.scene.state.TriangleList( towerTriangles )
+    pyramidNode = TriangleListNode( pyramidTriangles )
 
     #a Light leaf will control the lighting of any leaves rendered after it.
     light = qgl.scene.state.Light(position=(0,10,20))
@@ -88,8 +117,10 @@ def main():
     #lets give the light a red hue
     light.diffuse = ( 1.0, 1.0, 1.0, 0.0 )
 
-    #if the light leaf is added to the same group as the children it is going to light, it would move, and rotate with its children.
-    #this is not the effect we want in this case, so we add the light to its own group. which we will call environment.
+    #if the light leaf is added to the same group as the children it is going
+    #to light, it would move, and rotate with its children.
+    #this is not the effect we want in this case, so we add the light to its
+    #own group, which we will call environment.
     environment = qgl.scene.Group()
 
     #Now we add the different nodes and leaves into a tree structure using the .add method. 
@@ -98,28 +129,7 @@ def main():
     environment.add(light)
     environment.add(group)
 
-#    cl = client.CrystalClient("127.0.0.1")
-    remoteBoard = RemoteBoard()
-    try:
-#        server = client.waitFor(cl.connect)
-#        print client.waitFor(server.callRemote,"games")
-#        game = client.waitFor(server.callRemote, "create_game", "g")
-#        player = client.waitFor(game.callRemote, "sample_game", 4)
-#        players = client.waitFor(game.callRemote, "players")
-#        client.waitFor(player.callRemote, "set_board", remoteBoard)
-#        client.waitFor(player.callRemote, "set_ready")
-#        client.waitFor(game.callRemote, "shuffle")
-#        boardSide = client.waitFor(game.callRemote, "get_side")
-#        remoteBoard.dump()
-        pass
-    finally:
-#        client.reactor.callFromThread(client.reactor.stop)
-        pass
-
-    #game = model.random_moved(4) # model.game_for(4)
-
-    #for player, color in zip(game.players, TOWERCOLOURS):
-    #    player.color = color
+    localBoard = RemoteBoard()
 
     boardGroup = qgl.scene.Group()
     #boardGroup.axis = (1,0,0)
@@ -128,53 +138,55 @@ def main():
     #texture = qgl.scene.state.Texture("art/board.jpg")
     #boardGroup.add(texture)
     group.add(boardGroup)
-    #Before the structure can be drawn, it needs to be compiled. To do this, we ask the root node to accept the compiler visitor.
-    #If any new nodes are added later in the program, they must also accept the compiler visitor before they can be drawn.
+
+    #Before the structure can be drawn, it needs to be compiled.
+    #To do this, we ask the root node to accept the compiler visitor.
+    #If any new nodes are added later in the program, they must also
+    #accept the compiler visitor before they can be drawn.
     root_node.accept(compiler)
     
     pieces = {}
-    def buildBoard(remoteBoard, boardGroup):
+    def buildBoard(localBoard, boardGroup, side):
+        hex = HexagonNode( 2.1 )
         color = (0.2, 0.2, 0.2, 1)
         darkcolor = (0.2, 0.2, 0.2, 1)
         material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
         boardGroup.add( material )
 
-        board = remoteBoard.board
-        hex = Hexagon( 2.1 )
-        for x in range(remoteBoard.side):
-            for z in range(remoteBoard.side):
+        localBoard.side = side
+        for x in range(side):
+            for z in range(side):
                 cell = qgl.scene.Group()
                 cell.selectable = True
                 cell.position = (x,z)
                 boardGroup.add(cell)
 
-                cell.translate = (x-remoteBoard.side/2 + ((z%2)*0.5+0.25))*4, 0, (z-remoteBoard.side/2)*3.5777087639996634
+                cell.translate = (x-side/2 + ((z%2)*0.5+0.25))*4, 0, (z-side/2)*3.5777087639996634
                 cell.angle = 90
                 cell.axis= 0,1,0
-                #quad = qgl.scene.state.Quad( (4, 3.5777087639996634) )
                 cell.add( hex )
 
         playerColours = {}
         for n, playerName in enumerate(players):
-            playerColours[playerName] = TOWERCOLOURS[n]
+            playerColours[playerName] = TOWER_COLOURS[n]
 
-        for (pieceId, (playerName, pieceSize, playerId)) in remoteBoard.pieces.iteritems():
+        for (pieceId, (playerName, pieceSize, playerId)) in localBoard.pieces.iteritems():
             pyramid = qgl.scene.Group()
             pyramid.id = pieceId
             pyramid.selectable = True
             pieces[pieceId] = pyramid
 
-            scale = TOWERSCALES[pieceSize-1]
+            scale = TOWER_SCALES[pieceSize-1]
             pyramid.scale = [scale]*3
 
             color = playerColours[playerName]
             darkcolor = (color[0]*0.15, color[1]*0.15, color[2]*0.2, 1.0)
             material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
 
-            pyramid.add(material, tria)
+            pyramid.add(material, pyramidNode)
             group.add(pyramid)
 
-        boardGroup.accept(compiler)
+        group.accept(compiler)
 
     global server
     server = None
@@ -187,10 +199,10 @@ def main():
     def gotGame(game):
         global server
         server.game = game
-        game.callRemote("sample_game", 4).addCallback(gotPlayer)
+        game.callRemote("sample_game", 5).addCallback(gotPlayer)
     def gotPlayer(player):
         server.player = player
-        player.callRemote("set_board", remoteBoard).addCallback(boardSet)
+        player.callRemote("set_board", localBoard).addCallback(boardSet)
     def boardSet(*a):
         server.player.callRemote("set_ready").addCallback(playerReady)
     def playerReady(*a):
@@ -202,8 +214,7 @@ def main():
         players = plys
         server.game.callRemote("get_side").addCallback(gotSide)
     def gotSide(side):
-        remoteBoard.side = side
-        buildBoard(remoteBoard, boardGroup)
+        buildBoard(localBoard, boardGroup, side)
 
     factory = pb.PBClientFactory() 
     reactor.connectTCP("127.0.0.1", 9091, factory)
@@ -216,9 +227,10 @@ def main():
     #the main render loop
     def loop():
         global lastPosition, lastSelected, piece
-        if remoteBoard.side is not None:
+        side = localBoard.side
+        if side is not None:
             # place every piece in their own spot
-            board = remoteBoard.board
+            board = localBoard.board
             for (x,z), stack in board.items():
                 y = 0
                 lastscale = 0
@@ -231,7 +243,7 @@ def main():
                     if lastscale != 0:
                         y += 3*(lastscale - scale) + 0.4
 
-                    piece.translate = (x-remoteBoard.side/2 + ((z%2)*0.5+0.25))*4, -1+scale + y, (z-remoteBoard.side/2)*3.5777087639996634
+                    piece.translate = (x-side/2 + ((z%2)*0.5+0.25))*4, -1+scale + y, (z-side/2)*3.5777087639996634
                     lastscale = scale
             
         position = pygame.mouse.get_pos()
@@ -242,7 +254,6 @@ def main():
             #ask the root node to accept the picker.
             root_node.accept(picker)
             #picker.hits will be a list of nodes which were rendered at the position.
-            #to visualise which node was clicked, lets adjust its angle by 10 degrees.
             if len(picker.hits) > 0:
                 picked = picker.hits[0]
 
@@ -253,53 +264,39 @@ def main():
             elif event.type is KEYDOWN and event.key is K_ESCAPE:
                 reactor.stop()
             elif event.type is MOUSEBUTTONDOWN:
-                if len(picker.hits) > 0:
-                    picked = picker.hits[0]
-                    print picked
-                    #picked.angle += 10
-                    if hasattr(picked, "id"):
-                        if remoteBoard.on_hand is None:
-                            try:
-                                def gotPiece(p):
-                                    piece = p
-                                    print picked, piece
-                                #client.reactor.callFromThread(player.callRemote, "pick", picked.position, picked.id)
-                                server.player.callRemote("pick", picked.position).addCallback(gotPiece)
-                                #picked.angle += 10
-                            except Exception, e:
-                                print e
-                                pass
-                        else:
-                            try:
-                                pass
+                if event.button == 1:
+                    if len(picker.hits) > 0:
+                        picked = picker.hits[0]
+                        if hasattr(picked, "id"):
+                            if localBoard.on_hand is None:
+                                def gotPiece(*p):
+                                    print "Fue levantada la pieza...", picked
+                                def noPiece(failure):
+                                    print failure, failure.getErrorMessage(), failure.type
+                                    # failure.trap...
+                                server.player.callRemote("pick", picked.position).addCallbacks(gotPiece, noPiece)
+                            else:
                                 server.player.callRemote("cap", picked.position)
-                            except model.GameError, e:
-                                print e
-                                pass
-                            
-                    elif hasattr(picked, "position"):
-                        try:
+                                
+                        elif hasattr(picked, "position"):
                             server.player.callRemote("drop", picked.position)
-                        except Exception, e:
-                            print e
-                            pass
+                elif event.button == 4:
+                    group.angle -= 5
+                elif event.button == 5:
+                    group.angle += 5
 
-        #the group node has attributes that can be changed to manipulate the position of its children.
-        #if we change the groups axis attribute to (0,1,0), it will rotate on its vertical axis, which is what a planet would probably do.
-        group.axis = (0,1,0)
-        group.angle += .5
 
-        #ask the root node to accept the render visitor. This will draw the structure onto the screen.
-        #notice that QGL draws everything from the centre, and that the 0,0 point in a QGL screen is the center of the screen.
+        #ask the root node to accept the render visitor.
+        #This will draw the structure onto the screen.
+        #notice that QGL draws everything from the centre, and
+        #that the 0,0 point in a QGL screen is the center of the screen.
         root_node.accept(render)
-        
-        #flip the display
         pygame.display.flip()
 
-    FPS = 30
-    loop = task.LoopingCall(loop)
-    loop.start(1.0/FPS)
+    loopingCall = task.LoopingCall(loop)
+    loopingCall.start(1.0/FPS)
     reactor.run()
+    pygame.quit()
 
-main()
-pygame.quit()
+if __name__ == "__main__":
+    main()

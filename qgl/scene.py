@@ -26,14 +26,12 @@ This module contains all possible scene nodes and leaves.
 
 """
 
-from __future__ import division
 import weakref
 
 import Numeric
 from qgl import texture
 import qgl
 from copy import copy
-import euclid
 
 
 class Node(object): 
@@ -475,12 +473,7 @@ class state:
         def __init__(self, vertices):
             self.vertices = vertices
             
-    class TriangleList(QuadList):
-        def __init__(self, vertices):
-            self.vertices = []
-            self.normals = []
-            for triangleVertices in vertices:
-                v1, v2, v3 = [ euclid.Point3(*v) for v in triangleVertices ]
-                normal=(v3-v2).cross(v2-v1).normalized()
-                self.normals.append(normal)
-                self.vertices.append(triangleVertices)
+            
+
+        
+        
