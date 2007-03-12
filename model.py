@@ -1,7 +1,8 @@
 import random, math, string
-import unittest
+import unittest
+from twisted.spread import pb
 
-class GameError(Exception): pass
+class GameError(pb.Error): pass
 
 class Piece:
     def __init__(self, player, size, id):

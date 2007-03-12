@@ -3,7 +3,7 @@ from twisted.spread import pb
 from twisted.internet import reactor
 import model
 
-class ServerError(Exception):   pass
+class ServerError(pb.Error):   pass
 
 class NetworkServer(pb.Root):
     def __init__(self):
