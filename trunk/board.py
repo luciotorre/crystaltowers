@@ -3,30 +3,16 @@ import pygame
 import random
 from pygame.locals import *
 
-try:
-    import pygame.fastevent as eventmodule
-except ImportError:
-    import pygame.event as eventmodule
-
 import qgl
 from OpenGL.GL import *
 from OpenGL.GLU import *
     
-from twisted.internet import threadedselectreactor
-threadedselectreactor.install()
 from twisted.internet import reactor
 from twisted.spread import pb
+from twisted.internet import task
 
 from client import RemoteBoard
 import math
-
-TWISTEDEVENT = USEREVENT
-
-def postTwistedEvent(func):
-    # if not using pygame.fastevent, this can explode if the queue
-    # fills up.. so that's bad.  Use pygame.fastevent, in pygame CVS
-    # as of 2005-04-18.
-    eventmodule.post(eventmodule.Event(TWISTEDEVENT, iterateTwisted=func))
 
 class Hexagon(qgl.scene.Leaf):
     def __init__(self, r):
@@ -62,20 +48,10 @@ TOWERSCALES = [ 0.4, 0.7, 1 ]
 def main():
     #setup pygame as normal, making sure to include the OPENGL flag in the init function arguments.
     pygame.init()
-    if hasattr(eventmodule, 'init'):
-        eventmodule.init()
     
     flags =  OPENGL|DOUBLEBUF|HWSURFACE
     pygame.display.set_mode((800,600), flags)
 
-    # send an event when twisted wants attention
-    reactor.interleave(postTwistedEvent)
-    # make shouldQuit a True value when it's safe to quit
-    # by appending a value to it.  This ensures that
-    # Twisted gets to shut down properly.
-    shouldQuit = []
-    reactor.addSystemEventTrigger('after', 'shutdown', shouldQuit.append, True)
-    
     #Create two visitors.
     #The compiler visitor is used to change a Node object into a set of OpenGL draw commands. More on nodes later.
     compiler = qgl.render.Compiler()
@@ -233,13 +209,13 @@ def main():
     reactor.connectTCP("127.0.0.1", 9091, factory)
     d = factory.getRootObject().addCallback(gotServer)
     
-    clock = pygame.time.Clock()
-
+    global lastPosition, lastSelected, piece
     piece = None
-    #the main render loop
     lastPosition = None
     lastSelected = None
-    while True:
+    #the main render loop
+    def loop():
+        global lastPosition, lastSelected, piece
         if remoteBoard.side is not None:
             # place every piece in their own spot
             board = remoteBoard.board
@@ -271,12 +247,7 @@ def main():
                 picked = picker.hits[0]
 
         #process pygame events.
-        for event in eventmodule.get():
-
-            if event.type == TWISTEDEVENT:
-                event.iterateTwisted()
-                if shouldQuit:
-                    return
+        for event in pygame.event.get():
             if event.type is QUIT:
                 reactor.stop()
             elif event.type is KEYDOWN and event.key is K_ESCAPE:
@@ -316,16 +287,19 @@ def main():
         #the group node has attributes that can be changed to manipulate the position of its children.
         #if we change the groups axis attribute to (0,1,0), it will rotate on its vertical axis, which is what a planet would probably do.
         group.axis = (0,1,0)
-        #group.angle += .5
+        group.angle += .5
 
         #ask the root node to accept the render visitor. This will draw the structure onto the screen.
         #notice that QGL draws everything from the centre, and that the 0,0 point in a QGL screen is the center of the screen.
         root_node.accept(render)
         
-        clock.tick(30)
         #flip the display
         pygame.display.flip()
 
+    FPS = 30
+    loop = task.LoopingCall(loop)
+    loop.start(1.0/FPS)
+    reactor.run()
 
 main()
 pygame.quit()
