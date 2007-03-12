@@ -15,6 +15,8 @@ from client import RemoteBoard
 import math
 import euclid
 
+class GameError(pb.Error): pass
+
 class HexagonNode(qgl.scene.Leaf):
     def __init__(self, r):
         s=math.sin(math.radians(60))*r
@@ -72,94 +74,95 @@ FPS=30
 WINDOW_SIZE=(800,600)
 
 
-def main():
-    #setup pygame as normal, making sure to include the OPENGL flag in the init function arguments.
-    pygame.init()
-    flags =  OPENGL|DOUBLEBUF|HWSURFACE
-    pygame.display.set_mode(WINDOW_SIZE, flags)
+class Game:
+    server = None
+    players = None
+    picked = None
 
-    #Create the visitors.
-    #The compiler visitor is used to change a Node object into a set of OpenGL draw commands. More on nodes later.
-    compiler = qgl.render.Compiler()
-    #The render visitor is used to execute compiled commands.
-    render = qgl.render.Render()
-    #the picker visitor can check which attributes are clicked by a mouse
-    picker = qgl.render.Picker()
-    
-    #the root node is the root of the tree structure (also called a scene graph). Branches get added to the root. 
-    root_node = qgl.scene.Root()
-    
-    #every root node must have a viewport branch, which specifies which area of the screen to draw to.
-    #the PersepctiveViewport renders all its children in a 3d view.
-    viewport = qgl.scene.PerspectiveViewport()
-    viewport.screen_dimensions = (0,0) + WINDOW_SIZE
-    
-    #a group node can translate, rotate and scale its children. it can also contain leaves, which are drawable things.
-    group = qgl.scene.Group()
-    #because this group will be displayed in 3d, using a PerspectiveViewport, it makes sense to move it into the screen
-    #using the group.translate attribute. Any objects drawn at a depth (z) of 0.0 in a perspective viewport will not be show.
-    group.translate = ( 0.0, -10.0, -50 )
-    #the group node has attributes that can be changed to manipulate the position of its children.
-    group.axis = (0,1,0)
-    group.angle = 45
-    
-    pyramidTriangles = [
-        [(0,2,0), (-1,-1,-1), (1,-1,-1)],
-        [(0,2,0), (1,-1,-1), (1,-1,1)],
-        [(0,2,0), (1,-1,1), (-1,-1,1)],
-        [(0,2,0), (-1,-1,1), (-1,-1,-1)],
-    ]
-    pyramidNode = TriangleListNode( pyramidTriangles )
+    def __init__(self):
+        #setup pygame as normal, making sure to include the OPENGL flag in the init function arguments.
+        pygame.init()
+        flags =  OPENGL|DOUBLEBUF|HWSURFACE
+        pygame.display.set_mode(WINDOW_SIZE, flags)
 
-    #a Light leaf will control the lighting of any leaves rendered after it.
-    light = qgl.scene.state.Light(position=(0,10,20))
+        #Create the visitors.
+        #The compiler visitor is used to change a Node object into a set of OpenGL draw commands. More on nodes later.
+        self.compiler = qgl.render.Compiler()
+        #The render visitor is used to execute compiled commands.
+        self.render = qgl.render.Render()
+        #the picker visitor can check which attributes are clicked by a mouse
+        self.picker = qgl.render.Picker()
+        
+        #the root node is the root of the tree structure (also called a scene graph). Branches get added to the root. 
+        self.root_node = qgl.scene.Root()
+        
+        #every root node must have a viewport branch, which specifies which area of the screen to draw to.
+        #the PersepctiveViewport renders all its children in a 3d view.
+        viewport = qgl.scene.PerspectiveViewport()
+        viewport.screen_dimensions = (0,0) + WINDOW_SIZE
+        
+        #a group node can translate, rotate and scale its children. it can also contain leaves, which are drawable things.
+        self.gameGroup = qgl.scene.Group()
+        #because this group will be displayed in 3d, using a PerspectiveViewport, it makes sense to move it into the screen
+        #using the group.translate attribute. Any objects drawn at a depth (z) of 0.0 in a perspective viewport will not be show.
+        self.gameGroup.translate = ( 0.0, -10.0, -50 )
+        #the group node has attributes that can be changed to manipulate the position of its children.
+        self.gameGroup.axis = (0,1,0)
+        self.gameGroup.angle = 45
+        
+        #a Light leaf will control the lighting of any leaves rendered after it.
+        light = qgl.scene.state.Light(position=(0,10,20))
 
-    #lets give the light a red hue
-    light.diffuse = ( 1.0, 1.0, 1.0, 0.0 )
+        #lets give the light a red hue
+        light.diffuse = ( 1.0, 1.0, 1.0, 0.0 )
 
-    #if the light leaf is added to the same group as the children it is going
-    #to light, it would move, and rotate with its children.
-    #this is not the effect we want in this case, so we add the light to its
-    #own group, which we will call environment.
-    environment = qgl.scene.Group()
+        #if the light leaf is added to the same group as the children it is going
+        #to light, it would move, and rotate with its children.
+        #this is not the effect we want in this case, so we add the light to its
+        #own group, which we will call environment.
+        environment = qgl.scene.Group()
 
-    #Now we add the different nodes and leaves into a tree structure using the .add method. 
-    root_node.add(viewport)
-    viewport.add(environment)
-    environment.add(light)
-    environment.add(group)
+        #Now we add the different nodes and leaves into a tree structure using the .add method. 
+        self.root_node.add(viewport)
+        viewport.add(environment)
+        environment.add(light)
+        environment.add(self.gameGroup)
 
-    localBoard = RemoteBoard()
+        self.localBoard = RemoteBoard()
 
-    boardGroup = qgl.scene.Group()
-    #boardGroup.axis = (1,0,0)
-    #boardGroup.angle -= 90
-    boardGroup.translate = (0,-1,0)
-    #texture = qgl.scene.state.Texture("art/board.jpg")
-    #boardGroup.add(texture)
-    group.add(boardGroup)
+        self.boardGroup = qgl.scene.Group()
+        #boardGroup.axis = (1,0,0)
+        #boardGroup.angle -= 90
+        self.boardGroup.translate = (0,-1,0)
+        #texture = qgl.scene.state.Texture("art/board.jpg")
+        #boardGroup.add(texture)
+        self.gameGroup.add(self.boardGroup)
 
-    #Before the structure can be drawn, it needs to be compiled.
-    #To do this, we ask the root node to accept the compiler visitor.
-    #If any new nodes are added later in the program, they must also
-    #accept the compiler visitor before they can be drawn.
-    root_node.accept(compiler)
-    
-    pieces = {}
-    def buildBoard(localBoard, boardGroup, side):
+        #Before the structure can be drawn, it needs to be compiled.
+        #To do this, we ask the root node to accept the compiler visitor.
+        #If any new nodes are added later in the program, they must also
+        #accept the compiler visitor before they can be drawn.
+        self.root_node.accept(self.compiler)
+        self.pieces = {}
+
+    def setupLoop(self):
+        self.loopingCall = task.LoopingCall(self.loop)
+        self.loopingCall.start(1.0/FPS)
+
+    def buildBoard(self, side):
         hex = HexagonNode( 2.1 )
         color = (0.2, 0.2, 0.2, 1)
         darkcolor = (0.2, 0.2, 0.2, 1)
         material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
-        boardGroup.add( material )
+        self.boardGroup.add( material )
 
-        localBoard.side = side
+        self.localBoard.side = side
         for x in range(side):
             for z in range(side):
                 cell = qgl.scene.Group()
                 cell.selectable = True
                 cell.position = (x,z)
-                boardGroup.add(cell)
+                self.boardGroup.add(cell)
 
                 cell.translate = (x-side/2 + ((z%2)*0.5+0.25))*4, 0, (z-side/2)*3.5777087639996634
                 cell.angle = 90
@@ -167,14 +170,22 @@ def main():
                 cell.add( hex )
 
         playerColours = {}
-        for n, playerName in enumerate(players):
+        for n, playerName in enumerate(self.players):
             playerColours[playerName] = TOWER_COLOURS[n]
 
-        for (pieceId, (playerName, pieceSize, playerId)) in localBoard.pieces.iteritems():
+        pyramidTriangles = [
+            [(0,2,0), (-1,-1,-1), (1,-1,-1)],
+            [(0,2,0), (1,-1,-1), (1,-1,1)],
+            [(0,2,0), (1,-1,1), (-1,-1,1)],
+            [(0,2,0), (-1,-1,1), (-1,-1,-1)],
+        ]
+        pyramidNode = TriangleListNode( pyramidTriangles )
+
+        for (pieceId, (playerName, pieceSize, playerId)) in self.localBoard.pieces.iteritems():
             pyramid = qgl.scene.Group()
             pyramid.id = pieceId
             pyramid.selectable = True
-            pieces[pieceId] = pyramid
+            self.pieces[pieceId] = pyramid
 
             scale = TOWER_SCALES[pieceSize-1]
             pyramid.scale = [scale]*3
@@ -184,58 +195,55 @@ def main():
             material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
 
             pyramid.add(material, pyramidNode)
-            group.add(pyramid)
+            self.gameGroup.add(pyramid)
 
-        group.accept(compiler)
+        self.gameGroup.accept(self.compiler)
 
-    global server
-    server = None
-    global players
-    players = None
-    def gotServer(srv):
-        global server
-        server = srv
-        server.callRemote("create_game", "g").addCallback(gotGame)
-    def gotGame(game):
-        global server
-        server.game = game
-        game.callRemote("sample_game", 5).addCallback(gotPlayer)
-    def gotPlayer(player):
-        server.player = player
-        player.callRemote("set_board", localBoard).addCallback(boardSet)
-    def boardSet(*a):
-        server.player.callRemote("set_ready").addCallback(playerReady)
-    def playerReady(*a):
-        server.game.callRemote("shuffle").addCallback(boardShuffled)
-    def boardShuffled(*a):
-        server.game.callRemote("players").addCallback(gotPlayers)
-    def gotPlayers(plys):
-        global players
-        players = plys
-        server.game.callRemote("get_side").addCallback(gotSide)
-    def gotSide(side):
-        buildBoard(localBoard, boardGroup, side)
+    def start(self):
+        factory = pb.PBClientFactory() 
+        reactor.connectTCP("127.0.0.1", 9091, factory)
+        d = factory.getRootObject().addCallback(self.gotServer)
 
-    factory = pb.PBClientFactory() 
-    reactor.connectTCP("127.0.0.1", 9091, factory)
-    d = factory.getRootObject().addCallback(gotServer)
-    
-    global lastPosition, lastSelected, piece
-    piece = None
+    def gotServer(self, server):
+        self.server = server
+        server.callRemote("create_game", "g").addCallback(self.gotGame)
+
+    def gotGame(self, game):
+        self.server.game = game
+        game.callRemote("sample_game", 5).addCallback(self.gotPlayer)
+
+    def gotPlayer(self, player):
+        self.server.player = player
+        player.callRemote("set_board", self.localBoard).addCallback(self.boardSet)
+
+    def boardSet(self, *a):
+        self.server.player.callRemote("set_ready").addCallback(self.playerReady)
+
+    def playerReady(self, *a):
+        self.server.game.callRemote("shuffle").addCallback(self.boardShuffled)
+
+    def boardShuffled(self, *a):
+        self.server.game.callRemote("players").addCallback(self.gotPlayers)
+
+    def gotPlayers(self, plys):
+        self.players = plys
+        self.server.game.callRemote("get_side").addCallback(self.gotSide)
+
+    def gotSide(self, side):
+        self.buildBoard(side)
+
     lastPosition = None
-    lastSelected = None
     #the main render loop
-    def loop():
-        global lastPosition, lastSelected, piece
-        side = localBoard.side
+    def loop(self):
+        side = self.localBoard.side
         if side is not None:
             # place every piece in their own spot
-            board = localBoard.board
+            board = self.localBoard.board
             for (x,z), stack in board.items():
                 y = 0
                 lastscale = 0
                 for pieceId in stack:
-                    piece = pieces[pieceId]
+                    piece = self.pieces[pieceId]
                     piece.position = (x,z)
                     piece.stack = stack
                     scale = piece.scale[0]
@@ -247,15 +255,15 @@ def main():
                     lastscale = scale
             
         position = pygame.mouse.get_pos()
-        if position != lastPosition:
-            lastPosition = position
+        if position != self.lastPosition:
+            self.lastPosition = position
             #tell the picker we are interested in the area clicked by the mouse
-            picker.set_position(position)
+            self.picker.set_position(position)
             #ask the root node to accept the picker.
-            root_node.accept(picker)
+            self.root_node.accept(self.picker)
             #picker.hits will be a list of nodes which were rendered at the position.
-            if len(picker.hits) > 0:
-                picked = picker.hits[0]
+            if len(self.picker.hits) > 0:
+                self.picked = self.picker.hits[0]
 
         #process pygame events.
         for event in pygame.event.get():
@@ -265,38 +273,39 @@ def main():
                 reactor.stop()
             elif event.type is MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    if len(picker.hits) > 0:
-                        picked = picker.hits[0]
-                        if hasattr(picked, "id"):
-                            if localBoard.on_hand is None:
+                    if self.picked is not None:
+                        if hasattr(self.picked, "id"):
+                            if self.localBoard.on_hand is None:
                                 def gotPiece(*p):
-                                    print "Fue levantada la pieza...", picked
+                                    print "Fue levantada la pieza...", self.picked
                                 def noPiece(failure):
                                     print failure, failure.getErrorMessage(), failure.type
                                     # failure.trap...
-                                server.player.callRemote("pick", picked.position).addCallbacks(gotPiece, noPiece)
+                                self.server.player.callRemote("pick", self.picked.position).addCallbacks(gotPiece, noPiece)
                             else:
-                                server.player.callRemote("cap", picked.position)
+                                self.server.player.callRemote("cap", self.picked.position)
                                 
-                        elif hasattr(picked, "position"):
-                            server.player.callRemote("drop", picked.position)
+                        elif hasattr(self.picked, "position"):
+                            self.server.player.callRemote("drop", self.picked.position)
                 elif event.button == 4:
-                    group.angle -= 5
+                    self.gameGroup.angle -= 5
+                    self.lastPosition = None
                 elif event.button == 5:
-                    group.angle += 5
+                    self.gameGroup.angle += 5
+                    self.lastPosition = None
 
 
         #ask the root node to accept the render visitor.
         #This will draw the structure onto the screen.
         #notice that QGL draws everything from the centre, and
         #that the 0,0 point in a QGL screen is the center of the screen.
-        root_node.accept(render)
+        self.root_node.accept(self.render)
         pygame.display.flip()
 
-    loopingCall = task.LoopingCall(loop)
-    loopingCall.start(1.0/FPS)
-    reactor.run()
-    pygame.quit()
 
 if __name__ == "__main__":
-    main()
+    game=Game()
+    game.setupLoop()
+    game.start()
+    reactor.run()
+    pygame.quit()
