@@ -47,6 +47,7 @@ import random
 #cache for textures and fonts, so that they can be shared among nodes in the tree
 qgl_cache = WeakValueDictionary()
 
+
 class Visitor(object):
     def push_state(self, node): pass
     def pop_state(self, node): pass
@@ -416,7 +417,7 @@ class Render(Visitor):
         glDepthFunc(GL_LEQUAL)
         glClearDepth(1.0)
         glFrontFace(GL_CW)
-        glShadeModel(GL_FLAT) #GL_SMOOTH)
+        glShadeModel(GL_SMOOTH)
         glCullFace(GL_BACK)
         glEnable(GL_CULL_FACE)
         glClearColor(*node.background_color)
@@ -498,14 +499,7 @@ class Render(Visitor):
             elif leaf.__class__ is state.QuadList:
                 glBegin(GL_QUADS)
                 for v in leaf.vertices:
-                    glVertex3dv(v)   
-                glEnd()
-            elif leaf.__class__ is state.TriangleList:
-                glBegin(GL_TRIANGLES)
-                for normal, vertices in zip(leaf.normals, leaf.vertices):
-                    glNormal3dv(normal)
-                    for v in vertices:
-                        glVertex3dv(v)
+                    glVertex3v(v)   
                 glEnd()
             elif leaf.__class__ is state.DepthTest:
                 if leaf.enabled:
@@ -674,7 +668,6 @@ def render(node):
                 glEnable(GL_TEXTURE_2D)
                 glBindTexture(GL_TEXTURE_2D, leaf.texture.id)
             elif leaf__class__ is state.Color:
-                print leaf.rgba
                 glColor4f(leaf.rgba[0], leaf.rgba[1], leaf.rgba[2], leaf.rgba[3])
             elif leaf__class__ is state.Polyline:
                 glBegin(GL_LINE_STRIP)
