@@ -13,7 +13,8 @@ from twisted.internet import task
 
 from client import RemoteBoard
 import math
-import euclid
+from euclid import *
+import selection
 
 class GameError(pb.Error): pass
 
@@ -41,7 +42,7 @@ class TriangleListNode(qgl.scene.Leaf):
 
         self.normals = []
         for triangleVertices in vertices:
-            v1, v2, v3 = [ euclid.Point3(*v) for v in triangleVertices ]
+            v1, v2, v3 = [ Point3(*v) for v in triangleVertices ]
             normal=(v3-v2).cross(v2-v1).normalized()
             self.normals.append(normal)
             self.vertices.append(triangleVertices)
@@ -105,9 +106,9 @@ class Game:
         self.gameGroup = qgl.scene.Group()
         #because this group will be displayed in 3d, using a PerspectiveViewport, it makes sense to move it into the screen
         #using the group.translate attribute. Any objects drawn at a depth (z) of 0.0 in a perspective viewport will not be show.
-        self.gameGroup.translate = ( 0.0, -10.0, -50 )
+        self.gameGroup.translate = Point3( 0.0, -10.0, -50 )
         #the group node has attributes that can be changed to manipulate the position of its children.
-        self.gameGroup.axis = (0,1,0)
+        self.gameGroup.axis = Vector3(0,1,0)
         self.gameGroup.angle = 45
         
         #a Light leaf will control the lighting of any leaves rendered after it.
@@ -144,6 +145,8 @@ class Game:
         #accept the compiler visitor before they can be drawn.
         self.root_node.accept(self.compiler)
         self.pieces = {}
+        self.onHand = None
+        self.boardPlane = Plane( Point3(0,-11,0), Point3(0,-11,1), Point3(1,-11,1) )
 
     def setupLoop(self):
         self.loopingCall = task.LoopingCall(self.loop)
@@ -253,8 +256,9 @@ class Game:
 
                     piece.translate = (x-side/2 + ((z%2)*0.5+0.25))*4, -1+scale + y, (z-side/2)*3.5777087639996634
                     lastscale = scale
-            
+
         position = pygame.mouse.get_pos()
+        self.picked = None
         if position != self.lastPosition:
             self.lastPosition = position
             #tell the picker we are interested in the area clicked by the mouse
@@ -264,6 +268,8 @@ class Game:
             #picker.hits will be a list of nodes which were rendered at the position.
             if len(self.picker.hits) > 0:
                 self.picked = self.picker.hits[0]
+                if self.picked is self.onHand and len(self.picker.hits) > 1:
+                    self.picked = self.picker.hits[1]
 
         #process pygame events.
         for event in pygame.event.get():
@@ -271,22 +277,40 @@ class Game:
                 reactor.stop()
             elif event.type is KEYDOWN and event.key is K_ESCAPE:
                 reactor.stop()
+            elif event.type is MOUSEMOTION:
+                if self.onHand is not None:
+                    #print self.onHand.id, event.pos
+                    #x, y, z = self.onHandTranslate
+                    ray = selection.generateSelectionRay(*event.pos)
+                    point = self.boardPlane.intersect(ray)
+                    if point is not None:
+                        matrix = Matrix4.new_rotate_axis(-math.radians(self.gameGroup.angle), self.gameGroup.axis).translate(*-self.gameGroup.translate)
+                        point = matrix * point
+                        #x, y, z = Point3(*point)-Point3(*self.gameGroup.translate)
+                        x, y, z = point
+                        self.onHand.translate = x, 0, z
+                    print "feel my death ray...", event.pos, ray, point
+                    
             elif event.type is MOUSEBUTTONDOWN:
                 if event.button == 1:
                     if self.picked is not None:
                         if hasattr(self.picked, "id"):
                             if self.localBoard.on_hand is None:
-                                def gotPiece(*p):
-                                    print "Fue levantada la pieza...", self.picked
-                                def noPiece(failure):
-                                    print failure, failure.getErrorMessage(), failure.type
+                                def gotPiece(result, piece):
+                                    print "Fue levantada la pieza...", piece
+                                    self.onHand = piece
+                                    #self.onHandTranslate = piece.translate
+                                def noPiece(failure, *a):
+                                    print failure, failure.getErrorMessage(), failure.type, a
+                                    self.onHand = None
+                                    raise failure
                                     # failure.trap...
-                                self.server.player.callRemote("pick", self.picked.position).addCallbacks(gotPiece, noPiece)
+                                self.server.player.callRemote("pick", self.picked.position).addCallbacks(gotPiece, errback=noPiece, callbackArgs=[self.picked])
                             else:
                                 self.server.player.callRemote("cap", self.picked.position)
-                                
                         elif hasattr(self.picked, "position"):
                             self.server.player.callRemote("drop", self.picked.position)
+                            self.onHand = None
                 elif event.button == 4:
                     self.gameGroup.angle -= 5
                     self.lastPosition = None
