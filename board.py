@@ -230,7 +230,8 @@ class Game:
         self.server.player.callRemote("set_ready").addCallback(self.playerReady)
 
     def playerReady(self, *a):
-        self.server.game.callRemote("shuffle").addCallback(self.boardShuffled)
+        #self.server.game.callRemote("shuffle").addCallback(self.boardShuffled)
+        self.boardShuffled()
 
     def boardShuffled(self, *a):
         self.server.game.callRemote("players").addCallback(self.gotPlayers)
@@ -264,22 +265,23 @@ class Game:
                     piece.translate = (x-side/2 + ((z%2)*0.5+0.25))*4, -1+scale + y, (z-side/2)*3.5777087639996634
                     lastscale = scale
 
-        position = pygame.mouse.get_pos()
-        self.picked = None
-        if position != self.lastPosition:
-            self.lastPosition = position
-            #tell the picker we are interested in the area clicked by the mouse
-            self.picker.set_position(position)
-            #ask the root node to accept the picker.
-            self.root_node.accept(self.picker)
-            #picker.hits will be a list of nodes which were rendered at the position.
-            if len(self.picker.hits) > 0:
-                self.picked = self.picker.hits[0]
-                if self.picked is self.onHand and len(self.picker.hits) > 1:
-                    self.picked = self.picker.hits[1]
 
         #process pygame events.
         for event in pygame.event.get():
+            if hasattr(event, "pos"):
+                if event.pos != self.lastPosition:
+                    self.lastPosition = event.pos
+                    #tell the picker we are interested in the area clicked by the mouse
+                    self.picker.set_position(event.pos)
+                    #ask the root node to accept the picker.
+                    self.root_node.accept(self.picker)
+                    #picker.hits will be a list of nodes which were rendered at the position.
+                    if len(self.picker.hits) > 0:
+                        self.picked = self.picker.hits[0]
+                        if self.picked is self.onHand and len(self.picker.hits) > 1:
+                            self.picked = self.picker.hits[1]
+                    else:
+                        self.picked = None
             if event.type is QUIT:
                 reactor.stop()
             elif event.type is KEYDOWN and event.key is K_ESCAPE:
@@ -295,8 +297,9 @@ class Game:
                         point = matrix * point
                         #x, y, z = Point3(*point)-Point3(*self.gameGroup.translate)
                         x, y, z = point
-                        self.onHand.translate = x, 0, z
-                    print "feel my death ray...", event.pos, ray, point
+                        scale = self.onHand.scale[0]
+                        self.onHand.translate = x, scale-1, z
+                    #print "feel my death ray...", event.pos, ray, point
                     
             elif event.type is MOUSEBUTTONDOWN:
                 if event.button == 1:
@@ -309,15 +312,17 @@ class Game:
                                     #self.onHandTranslate = piece.translate
                                 def noPiece(failure, *a):
                                     print failure, failure.getErrorMessage(), failure.type, a
-                                    self.onHand = None
-                                    raise failure
                                     # failure.trap...
                                 self.server.player.callRemote("pick", self.picked.position).addCallbacks(gotPiece, errback=noPiece, callbackArgs=[self.picked])
                             else:
                                 self.server.player.callRemote("cap", self.picked.position)
                         elif hasattr(self.picked, "position"):
-                            self.server.player.callRemote("drop", self.picked.position)
-                            self.onHand = None
+                            def pieceDropped(result):
+                                print "Soltada la pieza...", result
+                                self.onHand = None
+                            def cannotDrop(failure):
+                                print "No se puede soltar la pieza...", failure
+                            self.server.player.callRemote("drop", self.picked.position).addCallbacks(pieceDropped, cannotDrop)
                 elif event.button == 4:
                     self.gameGroup.angle -= 5
                     self.lastPosition = None
