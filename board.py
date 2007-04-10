@@ -18,10 +18,13 @@ import selection
 
 class GameError(pb.Error): pass
 
-class HexagonNode(qgl.scene.Leaf):
-    def __init__(self, r):
-        s=math.sin(math.radians(60))*r
-        self.vertices = (0,0,0), (r,0,0), (r/2,0,s), (-r/2,0,s), (-r,0,0), (-r/2,0,-s), (r/2,0,-s), (r,0,0)
+class RegularPolygonNode(qgl.scene.Leaf):
+    def __init__(self, nSides, radius):
+        assert nSides >= 3
+        self.vertices = []
+        for n in range(nSides): #0.0, math.pi*2, math.pi*2/nSides):
+            theta = math.pi*2*n/nSides
+            self.vertices.append( (math.cos(theta)*radius, 0, math.sin(theta)*radius) )
 
     def compile(self):
         self.list = qgl.render.GLDisplayList()
@@ -35,6 +38,10 @@ class HexagonNode(qgl.scene.Leaf):
 
     def execute(self):
         glCallList(self.list.id)
+
+class HexagonNode(RegularPolygonNode):
+    def __init__(self, radius):
+        RegularPolygonNode.__init__(self, 6, radius)
 
 class TriangleListNode(qgl.scene.Leaf):
     def __init__(self, vertices):
@@ -135,8 +142,8 @@ class Game:
         #boardGroup.axis = (1,0,0)
         #boardGroup.angle -= 90
         self.boardGroup.translate = (0,-1,0)
-        #texture = qgl.scene.state.Texture("art/board.jpg")
-        #boardGroup.add(texture)
+        #boardTexture = qgl.scene.state.Texture("art/board.jpg")
+        #self.boardGroup.add(boardTexture)
         self.gameGroup.add(self.boardGroup)
 
         #Before the structure can be drawn, it needs to be compiled.
