@@ -22,7 +22,7 @@ class RegularPolygonNode(qgl.scene.Leaf):
     def __init__(self, nSides, radius):
         assert nSides >= 3
         self.vertices = []
-        for n in range(nSides): #0.0, math.pi*2, math.pi*2/nSides):
+        for n in range(nSides):
             theta = math.pi*2*n/nSides
             self.vertices.append( (math.cos(theta)*radius, 0, math.sin(theta)*radius) )
 
@@ -119,10 +119,14 @@ class Game:
         self.gameGroup.angle = 45
         
         #a Light leaf will control the lighting of any leaves rendered after it.
-        light = qgl.scene.state.Light(position=(0,10,20))
+        ambient = [0.0, 0.0, 0.0, 1.0]
+        diffuse = [1.0, 1.0, 1.0, 1.0]
+        specular = [1.0, 1.0, 1.0, 1.0]
+        position = [0.0, 3.0, 3.0, 0.0]
+        light = qgl.scene.state.Light(ambient=ambient, diffuse=diffuse, specular=specular, position=position)
 
         #lets give the light a red hue
-        light.diffuse = ( 1.0, 1.0, 1.0, 0.0 )
+        light.diffuse = ( 1.0, 1.0, 1.0, 1.0 )
 
         #if the light leaf is added to the same group as the children it is going
         #to light, it would move, and rotate with its children.
@@ -161,9 +165,10 @@ class Game:
 
     def buildBoard(self, side):
         hex = HexagonNode( 2.1 )
-        color = (0.2, 0.2, 0.2, 1)
-        darkcolor = (0.2, 0.2, 0.2, 1)
-        material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
+        #color = (0.2, 0.2, 0.2, 1)
+        #darkcolor = (0.2, 0.2, 0.2, 1)
+        ambient, diffuse, specular, shininess = (0.0, 0.0, 0.0), (0.1, 0.35, 0.1), (0.45, 0.55, 0.45), .25
+        material = qgl.scene.state.Material(ambient=ambient, diffuse=diffuse, specular=specular, shininess=shininess )
         self.boardGroup.add( material )
 
         self.localBoard.side = side
@@ -202,7 +207,7 @@ class Game:
 
             color = playerColours[playerName]
             darkcolor = (color[0]*0.15, color[1]*0.15, color[2]*0.2, 1.0)
-            material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
+            #material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
 
             pyramid.add(material, pyramidNode)
             self.gameGroup.add(pyramid)
