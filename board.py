@@ -167,8 +167,8 @@ class Game:
         hex = HexagonNode( 2.1 )
         #color = (0.2, 0.2, 0.2, 1)
         #darkcolor = (0.2, 0.2, 0.2, 1)
-        ambient, diffuse, specular, shininess = (0.0, 0.0, 0.0), (0.1, 0.35, 0.1), (0.45, 0.55, 0.45), .25
-        material = qgl.scene.state.Material(ambient=ambient, diffuse=diffuse, specular=specular, shininess=shininess )
+        ambient, diffuse, specular, shininess, emissive = (0.0, 0.0, 0.0, 1.0), (0.1, 0.35, 0.1, 1.0), (0.45, 0.55, 0.45, 1.0), (128.0*.25,), (0.1, 0.1, 0.1, 1.0)
+        material = qgl.scene.state.Material(ambient=ambient, diffuse=diffuse, specular=specular, shininess=shininess, emissive=emissive )
         self.boardGroup.add( material )
 
         self.localBoard.side = side
@@ -207,7 +207,7 @@ class Game:
 
             color = playerColours[playerName]
             darkcolor = (color[0]*0.15, color[1]*0.15, color[2]*0.2, 1.0)
-            #material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
+            material = qgl.scene.state.Material(specular=color, emissive=darkcolor )
 
             pyramid.add(material, pyramidNode)
             self.gameGroup.add(pyramid)

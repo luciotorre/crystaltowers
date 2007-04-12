@@ -453,7 +453,7 @@ class Render(Visitor):
                 glMaterialfv(GL_FRONT, GL_AMBIENT, leaf.ambient)
                 glMaterialfv(GL_FRONT, GL_DIFFUSE, leaf.diffuse)
                 glMaterialfv(GL_FRONT, GL_SPECULAR, leaf.specular)
-                glMaterialf(GL_FRONT, GL_SHININESS, leaf.shininess * 128.0)
+                glMaterialfv(GL_FRONT, GL_SHININESS, leaf.shininess)
                 glMaterialfv(GL_FRONT, GL_EMISSION, leaf.emissive)
             elif leaf.__class__ is state.Polyline:
                 glBegin(GL_LINE_STRIP)
@@ -488,6 +488,13 @@ class Render(Visitor):
                 glLightfv(leaf.light.id, GL_DIFFUSE, leaf.diffuse)
                 glLightfv(leaf.light.id, GL_SPECULAR, leaf.specular)
                 glLightfv(leaf.light.id, GL_POSITION, leaf.position)
+
+                lmodel_ambient = [0.2, 0.2, 0.2, 1.0]
+                local_view = [0.0]
+
+                glLightModelfv(GL_LIGHT_MODEL_AMBIENT, lmodel_ambient)
+                glLightModelfv(GL_LIGHT_MODEL_LOCAL_VIEWER, local_view)
+
             elif leaf.__class__ is state.Fog:
                 glEnable(GL_FOG)
                 glFogi(GL_FOG_MODE, GL_LINEAR)
