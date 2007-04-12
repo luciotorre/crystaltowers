@@ -450,11 +450,11 @@ class Render(Visitor):
             elif leaf.__class__ is state.Color:
                 glColor4f(leaf.rgba[0], leaf.rgba[1], leaf.rgba[2], leaf.rgba[3])
             elif leaf.__class__ is state.Material:
-                glMaterial(GL_FRONT, GL_AMBIENT, leaf.ambient)
-                glMaterial(GL_FRONT, GL_DIFFUSE, leaf.diffuse)
-                glMaterial(GL_FRONT, GL_SPECULAR, leaf.specular)
-                glMaterial(GL_FRONT, GL_SHININESS, leaf.shininess)
-                glMaterial(GL_FRONT, GL_EMISSION, leaf.emissive)
+                glMaterialfv(GL_FRONT, GL_AMBIENT, leaf.ambient)
+                glMaterialfv(GL_FRONT, GL_DIFFUSE, leaf.diffuse)
+                glMaterialfv(GL_FRONT, GL_SPECULAR, leaf.specular)
+                glMaterialf(GL_FRONT, GL_SHININESS, leaf.shininess * 128.0)
+                glMaterialfv(GL_FRONT, GL_EMISSION, leaf.emissive)
             elif leaf.__class__ is state.Polyline:
                 glBegin(GL_LINE_STRIP)
                 for v in leaf.vertices:
