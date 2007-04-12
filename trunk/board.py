@@ -78,7 +78,7 @@ TOWER_COLOURS = [
     (0.8, 0.3, 1.0, 1.0),
 ]
 TOWER_SCALES = [ 0.4, 0.7, 1 ]
-FPS=30
+FPS=15
 WINDOW_SIZE=(800,600)
 
 
@@ -271,43 +271,30 @@ class Game:
                     lastscale = scale
 
 
+        newPosition = None
         #process pygame events.
         for event in pygame.event.get():
-            if hasattr(event, "pos"):
-                if event.pos != self.lastPosition:
-                    self.lastPosition = event.pos
-                    #tell the picker we are interested in the area clicked by the mouse
-                    self.picker.set_position(event.pos)
-                    #ask the root node to accept the picker.
-                    self.root_node.accept(self.picker)
-                    #picker.hits will be a list of nodes which were rendered at the position.
-                    if len(self.picker.hits) > 0:
-                        self.picked = self.picker.hits[0]
-                        if self.picked is self.onHand and len(self.picker.hits) > 1:
-                            self.picked = self.picker.hits[1]
-                    else:
-                        self.picked = None
-            if event.type is QUIT:
+            if event.type is MOUSEMOTION:
+                newPosition = event.pos
+            elif event.type is QUIT:
                 reactor.stop()
             elif event.type is KEYDOWN and event.key is K_ESCAPE:
                 reactor.stop()
-            elif event.type is MOUSEMOTION:
-                if self.onHand is not None:
-                    #print self.onHand.id, event.pos
-                    #x, y, z = self.onHandTranslate
-                    ray = selection.generateSelectionRay(*event.pos)
-                    point = self.boardPlane.intersect(ray)
-                    if point is not None:
-                        matrix = Matrix4.new_rotate_axis(-math.radians(self.gameGroup.angle), self.gameGroup.axis).translate(*-self.gameGroup.translate)
-                        point = matrix * point
-                        #x, y, z = Point3(*point)-Point3(*self.gameGroup.translate)
-                        x, y, z = point
-                        scale = self.onHand.scale[0]
-                        self.onHand.translate = x, scale-1, z
-                    #print "feel my death ray...", event.pos, ray, point
-                    
             elif event.type is MOUSEBUTTONDOWN:
                 if event.button == 1:
+                    if event.pos != self.lastPosition:
+                        self.lastPosition = event.pos
+                        #tell the picker we are interested in the area clicked by the mouse
+                        self.picker.set_position(event.pos)
+                        #ask the root node to accept the picker.
+                        self.root_node.accept(self.picker)
+                        #picker.hits will be a list of nodes which were rendered at the position.
+                        if len(self.picker.hits) > 0:
+                            self.picked = self.picker.hits[0]
+                            if self.picked is self.onHand and len(self.picker.hits) > 1:
+                                self.picked = self.picker.hits[1]
+                        else:
+                            self.picked = None
                     if self.picked is not None:
                         if hasattr(self.picked, "id"):
                             if self.localBoard.on_hand is None:
@@ -329,12 +316,28 @@ class Game:
                                 print "No se puede soltar la pieza...", failure
                             self.server.player.callRemote("drop", self.picked.position).addCallbacks(pieceDropped, cannotDrop)
                 elif event.button == 4:
+                    newPosition = event.pos
                     self.gameGroup.angle -= 5
                     self.lastPosition = None
                 elif event.button == 5:
+                    newPosition = event.pos
                     self.gameGroup.angle += 5
                     self.lastPosition = None
 
+        if newPosition is not None and self.onHand is not None:
+            #print self.onHand.id, newPosition
+            #x, y, z = self.onHandTranslate
+            mx, my = newPosition
+            ray = selection.generateSelectionRay(mx,WINDOW_SIZE[1]-my)
+            point = self.boardPlane.intersect(ray)
+            if point is not None:
+                matrix = Matrix4.new_rotate_axis(-math.radians(self.gameGroup.angle), self.gameGroup.axis).translate(*-self.gameGroup.translate)
+                point = matrix * point
+                #x, y, z = Point3(*point)-Point3(*self.gameGroup.translate)
+                x, y, z = point
+                scale = self.onHand.scale[0]
+                self.onHand.translate = x, scale-1, z
+            print "feel my death ray...", newPosition, ray, point
 
         #ask the root node to accept the render visitor.
         #This will draw the structure onto the screen.
