@@ -401,9 +401,11 @@ class Player(StateMixin):
             raise GameError("Cannot hold two pieces")
         if self.status != self.STATUS_PLAYING:
             raise GameError("Cannot Move, wrong status")
-            
-        stack = self.game.board[where]
+        if piece.player != self:
+            raise GameError("Cannot mine another players pieces")
         
+        stack = self.game.board[where]
+
         if not piece in stack:
             raise GameError("Piece is not There")
         if stack[-1].player == self:
@@ -457,6 +459,7 @@ def random_moved(game):
        
     print "cap all"
     g.board.dump()
+    return g
         
     print "mine all"
     for where in positions:
