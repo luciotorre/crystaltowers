@@ -235,8 +235,10 @@ class Game:
         self.server.player.callRemote("set_ready").addCallback(self.playerReady)
 
     def playerReady(self, *a):
-        #self.server.game.callRemote("shuffle").addCallback(self.boardShuffled)
-        self.boardShuffled()
+        if 1:
+            self.server.game.callRemote("shuffle").addCallback(self.boardShuffled)
+        else:
+            self.boardShuffled()
 
     def boardShuffled(self, *a):
         self.server.game.callRemote("players").addCallback(self.gotPlayers)
@@ -248,7 +250,6 @@ class Game:
     def gotSide(self, side):
         self.buildBoard(side)
 
-    lastPosition = None
     #the main render loop
     def loop(self):
         side = self.localBoard.side
@@ -282,51 +283,62 @@ class Game:
                 reactor.stop()
             elif event.type is MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    if event.pos != self.lastPosition:
-                        self.lastPosition = event.pos
-                        #tell the picker we are interested in the area clicked by the mouse
-                        self.picker.set_position(event.pos)
-                        #ask the root node to accept the picker.
-                        self.root_node.accept(self.picker)
-                        #picker.hits will be a list of nodes which were rendered at the position.
-                        if len(self.picker.hits) > 0:
-                            self.picked = self.picker.hits[0]
-                            if self.picked is self.onHand and len(self.picker.hits) > 1:
+                    #tell the picker we are interested in the area clicked by the mouse
+                    self.picker.set_position(event.pos)
+                    #ask the root node to accept the picker.
+                    self.root_node.accept(self.picker)
+                    #picker.hits will be a list of nodes which were rendered at the position.
+                    if len(self.picker.hits) > 0:
+                        self.picked = self.picker.hits[0]
+                        if self.picked is self.onHand:
+                            if len(self.picker.hits) > 1:
                                 self.picked = self.picker.hits[1]
-                        else:
-                            self.picked = None
+                            else:
+                                self.picked = None
                     if self.picked is not None:
+                        print "clickeada la pieza...", self.picked
                         if hasattr(self.picked, "id"):
-                            if self.localBoard.on_hand is None:
+                            if self.onHand is None:
                                 def gotPiece(result, piece):
                                     print "Fue levantada la pieza...", piece
                                     self.onHand = piece
-                                    #self.onHandTranslate = piece.translate
                                 def noPiece(failure, *a):
                                     print failure, failure.getErrorMessage(), failure.type, a
                                     # failure.trap...
-                                self.server.player.callRemote("pick", self.picked.position).addCallbacks(gotPiece, errback=noPiece, callbackArgs=[self.picked])
+
+                                stack = self.localBoard.board[self.picked.position]
+                                if len(stack) == 1:
+                                    d=self.server.player.callRemote("pick", self.picked.position)
+                                else:
+                                    d=self.server.player.callRemote("mine", self.picked.position, self.picked.id)
+                                d.addCallbacks(gotPiece, noPiece, [self.picked])
+
                             else:
-                                self.server.player.callRemote("cap", self.picked.position)
+                                def pieceCapped(result, *a):
+                                    print "capped!", result, a
+                                    self.onHand = None
+                                def cannotCap(failure):
+                                    print "cannot cap!"
+                                print "capping..."
+                                d=self.server.player.callRemote("cap", self.picked.position)
+                                d.addCallback(pieceCapped, cannotCap)
                         elif hasattr(self.picked, "position"):
                             def pieceDropped(result):
                                 print "Soltada la pieza...", result
                                 self.onHand = None
                             def cannotDrop(failure):
                                 print "No se puede soltar la pieza...", failure
-                            self.server.player.callRemote("drop", self.picked.position).addCallbacks(pieceDropped, cannotDrop)
+                            d=self.server.player.callRemote("drop", self.picked.position)
+                            d.addCallbacks(pieceDropped, cannotDrop)
                 elif event.button == 4:
                     newPosition = event.pos
                     self.gameGroup.angle -= 5
-                    self.lastPosition = None
                 elif event.button == 5:
                     newPosition = event.pos
                     self.gameGroup.angle += 5
-                    self.lastPosition = None
 
         if newPosition is not None and self.onHand is not None:
             #print self.onHand.id, newPosition
-            #x, y, z = self.onHandTranslate
             mx, my = newPosition
             ray = selection.generateSelectionRay(mx,WINDOW_SIZE[1]-my)
             point = self.boardPlane.intersect(ray)
@@ -337,7 +349,7 @@ class Game:
                 x, y, z = point
                 scale = self.onHand.scale[0]
                 self.onHand.translate = x, scale-1, z
-            print "feel my death ray...", newPosition, ray, point
+            #print "feel my death ray...", newPosition, ray, point
 
         #ask the root node to accept the render visitor.
         #This will draw the structure onto the screen.
