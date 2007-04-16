@@ -91,7 +91,14 @@ class Game:
         #setup pygame as normal, making sure to include the OPENGL flag in the init function arguments.
         pygame.init()
         flags =  OPENGL|DOUBLEBUF|HWSURFACE
+        #pygame.display.gl_set_attribute(GL_DEPTH_SIZE, 24)
         pygame.display.set_mode(WINDOW_SIZE, flags)
+        for f in "GL_ALPHA_SIZE, GL_DEPTH_SIZE, GL_STENCIL_SIZE, GL_ACCUM_RED_SIZE, GL_ACCUM_GREEN_SIZE, GL_ACCUM_BLUE_SIZE, GL_ACCUM_ALPHA_SIZE, GL_MULTISAMPLEBUFFERS, GL_MULTISAMPLESAMPLES, GL_STEREO".split(", "):
+            try:
+                val = pygame.display.gl_get_attribute(eval(f))
+                print f, val
+            except:
+                pass
 
         #Create the visitors.
         #The compiler visitor is used to change a Node object into a set of OpenGL draw commands. More on nodes later.
@@ -194,6 +201,10 @@ class Game:
             [(0,2,0), (1,-1,1), (-1,-1,1)],
             [(0,2,0), (-1,-1,1), (-1,-1,-1)],
         ]
+        #from subdivide import subdivideTriangles
+        #pyramidTriangles = subdivideTriangles(pyramidTriangles)
+        #pyramidTriangles = subdivideTriangles(pyramidTriangles)
+        #pyramidTriangles = subdivideTriangles(pyramidTriangles)
         pyramidNode = TriangleListNode( pyramidTriangles )
 
         for (pieceId, (playerName, pieceSize, playerId)) in self.localBoard.pieces.iteritems():
