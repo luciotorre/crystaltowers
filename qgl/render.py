@@ -527,7 +527,7 @@ class Render(Visitor):
         glViewport(*node.screen_dimensions)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        gluPerspective(45.0, node.aspect, 0.1, 512)
+        gluPerspective(45.0, node.aspect, 10, 100)
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
     
@@ -593,7 +593,7 @@ class Picker(Render):
         glLoadIdentity()
         viewport = glGetIntegerv(GL_VIEWPORT)
         gluPickMatrix(self.position[0],node.window_size[1]-self.position[1],self.area[0],self.area[1],viewport)
-        gluPerspective(45, node.aspect, 0.1, 100)
+        gluPerspective(45, node.aspect, 10, 100)
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
     
@@ -731,7 +731,7 @@ def render(node):
         glViewport(*node.screen_dimensions)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        gluPerspective(45.0, node.aspect, 0.1, 512)
+        gluPerspective(45.0, node.aspect, 10, 100)
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
     
