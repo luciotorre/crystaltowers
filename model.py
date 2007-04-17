@@ -4,6 +4,8 @@ from twisted.spread import pb
 
 class GameError(pb.Error): pass
 
+PICK_EVERY_PIECE = True
+
 class Piece:
     def __init__(self, player, size, id):
         self.id = id
@@ -338,8 +340,9 @@ class Player(StateMixin):
         stack = self.game.board[where]
         if len(stack) != 1:
             raise GameError("Canot pick from stack with many pieces")
-        if stack[0].player != self:
-            raise GameError("Cannot pick another players pieces")
+        if not PICK_EVERY_PIECE:
+            if stack[0].player != self:
+                raise GameError("Cannot pick another players pieces")
         piece = self.game.board.pick(where, stack[0])
         self.on_hand = piece    
         self.game.moved()
@@ -401,18 +404,21 @@ class Player(StateMixin):
             raise GameError("Cannot hold two pieces")
         if self.status != self.STATUS_PLAYING:
             raise GameError("Cannot Move, wrong status")
-        if piece.player != self:
-            raise GameError("Cannot mine another players pieces")
+        if not PICK_EVERY_PIECE:
+            if piece.player != self:
+                raise GameError("Cannot mine another players pieces")
         
         stack = self.game.board[where]
 
         if not piece in stack:
             raise GameError("Piece is not There")
-        if stack[-1].player == self:
-            raise GameError("Cannot mine a tower you own")
+        if not PICK_EVERY_PIECE:
+            if stack[-1].player == self:
+                raise GameError("Cannot mine a tower you own")
             
-        if len([ p for p in stack if p.player == self ]) < 2:
-            raise GameError("Need two or more pieces to mine")
+        if not PICK_EVERY_PIECE:
+            if len([ p for p in stack if p.player == self ]) < 2:
+                raise GameError("Need two or more pieces to mine")
             
         self.on_hand = piece
         self.game.board.pick(where, piece)
