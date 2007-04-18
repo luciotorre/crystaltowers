@@ -299,6 +299,8 @@ class Game:
         for event in pygame.event.get():
             if event.type is MOUSEMOTION:
                 newPosition = event.pos
+                if pygame.key.get_mods() & KMOD_CTRL:
+                    self.gameGroup.angle += event.rel[0]/2.5
             elif event.type is QUIT:
                 reactor.stop()
             elif event.type is KEYDOWN and event.key is K_ESCAPE:
