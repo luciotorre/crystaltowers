@@ -16,6 +16,8 @@ import math
 from euclid import *
 import selection
 
+SHUFFLE_THE_BOARD = False
+
 class GameError(pb.Error): pass
 
 class RegularPolygonNode(qgl.scene.Leaf):
@@ -227,38 +229,47 @@ class Game:
 
     def start(self):
         factory = pb.PBClientFactory() 
+        print "connecting to server...",
         reactor.connectTCP("127.0.0.1", 9091, factory)
         d = factory.getRootObject().addCallback(self.gotServer)
 
     def gotServer(self, server):
         self.server = server
+        print "creating game..."
         server.callRemote("create_game", "g").addCallback(self.gotGame)
 
     def gotGame(self, game):
         self.server.game = game
+        print "joining sample users..."
         game.callRemote("sample_game", 5).addCallback(self.gotPlayer)
 
     def gotPlayer(self, player):
         self.server.player = player
+        print "setting board..."
         player.callRemote("set_board", self.localBoard).addCallback(self.boardSet)
 
     def boardSet(self, *a):
+        print "letting the server know that the player is ready..."
         self.server.player.callRemote("set_ready").addCallback(self.playerReady)
 
     def playerReady(self, *a):
-        if 1:
+        if SHUFFLE_THE_BOARD:
+            print "shuffling the board..."
             self.server.game.callRemote("shuffle").addCallback(self.boardShuffled)
         else:
             self.boardShuffled()
 
     def boardShuffled(self, *a):
+        print "getting other players' names..."
         self.server.game.callRemote("players").addCallback(self.gotPlayers)
 
     def gotPlayers(self, plys):
         self.players = plys
+        print "getting board side..."
         self.server.game.callRemote("get_side").addCallback(self.gotSide)
 
     def gotSide(self, side):
+        print "building the board..."
         self.buildBoard(side)
 
     #the main render loop

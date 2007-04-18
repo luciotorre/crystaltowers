@@ -465,7 +465,6 @@ def random_moved(game):
        
     print "cap all"
     g.board.dump()
-    return g
         
     print "mine all"
     for where in positions:
