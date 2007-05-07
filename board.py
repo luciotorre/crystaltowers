@@ -91,11 +91,11 @@ class Menu(qgl.scene.Group):
         self.add(self.menuItemsGroup)
 
         for n, (label, action) in enumerate(menuOptions):
-            texto = leafs.TextoAlineado(label, "data/fonts/menu.ttf", size=750, aligny=0.8)
+            texto = leafs.TextoAlineado(label, "data/fonts/menu.ttf", size=750, aligny=0.3)
             t = qgl.scene.Group()
             t.action = action
             t.selectable = True
-            t.translate = 0, menuitemSeparation*(numOptions/2-n), 0
+            t.translate = 0, menuitemSeparation*(numOptions/2-n-.7), 0
             t.add(texto)
             self.menuItemsGroup.add(t)
 
