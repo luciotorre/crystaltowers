@@ -17,7 +17,7 @@ import math
 from euclid import *
 import selection
 
-SHUFFLE_THE_BOARD = False
+SHUFFLE_THE_BOARD = True
 
 class GameError(pb.Error): pass
 
@@ -101,7 +101,8 @@ class Menu(qgl.scene.Group):
 
     def clicked(self):
         if self.selectedItem is not None:
-            print self.selectedItem, self.selectedItem.action
+            print "doing...", self.selectedItem, self.selectedItem.action
+            self.selectedItem.action()
 
     def selected(self, item):
         if item != self.selectedItem:
@@ -200,24 +201,12 @@ class Game:
         self.environment.angle = 30
 
         self.localBoard = RemoteBoard()
-
-        self.boardGroup = qgl.scene.Group()
-        #boardGroup.axis = (1,0,0)
-        #boardGroup.angle -= 90
-        boardY = -1.0
-        self.boardGroup.translate = (0,boardY,0)
-        #boardTexture = qgl.scene.state.Texture("art/board.jpg")
-        #self.boardGroup.add(boardTexture)
-        self.gameGroup.add(self.boardGroup)
+        self.createBoardGroup()
 
         menuOptions = [
-            ("Hello world", 1),
-            ("What the fsck", 2),
-            ("So what you want", 3),
-            ("This is the way", 3),
-            ("This is the only way", 3),
-            ("Cold in the head", 3),
-            ("Warm in the heart", 3),
+            ("Join new game", self.joinServer),
+            ("Keep playing", self.keepPlaying),
+            ("Exit game", self.exitGame),
         ]
         self.menuGroup = Menu(menuOptions)
         self.menuViewport.add( self.menuGroup )
@@ -230,14 +219,29 @@ class Game:
         self.root_node.accept(self.compiler)
         self.pieces = {}
         self.onHand = None
-        self.boardPlane = Plane( Point3(0,boardY,0), Point3(0,boardY,1), Point3(1,boardY,1) )
 
+    def createBoardGroup(self):
+        self.boardGroup = qgl.scene.Group()
+        boardY = -1.0
+        self.boardGroup.translate = (0,boardY,0)
+        #boardTexture = qgl.scene.state.Texture("art/board.jpg")
+        #self.boardGroup.add(boardTexture)
+        self.gameGroup.add(self.boardGroup)
+        self.boardPlane = Plane( Point3(0,boardY,0), Point3(0,boardY,1), Point3(1,boardY,1) )
+        self.pyramids = []
 
     def setupLoop(self):
         self.loopingCall = task.LoopingCall(self.loop)
         self.loopingCall.start(1.0/FPS)
 
     def buildBoard(self, side):
+        # remove the previous board, if it was already there
+        self.gameGroup.remove(self.boardGroup)
+        self.gameGroup.remove(*self.pyramids)
+        self.onHand = None
+        self.pyramids = []
+        self.createBoardGroup()
+
         hex = HexagonNode( 2.1 )
         #color = (0.2, 0.2, 0.2, 1)
         #darkcolor = (0.2, 0.2, 0.2, 1)
@@ -289,8 +293,19 @@ class Game:
 
             pyramid.add(material, pyramidNode)
             self.gameGroup.add(pyramid)
+            self.pyramids.append(pyramid)
 
         self.gameGroup.accept(self.compiler)
+
+    def joinServer(self):
+        self.start()
+        pass
+
+    def keepPlaying(self):
+        self.menuDisable()
+
+    def exitGame(self):
+        reactor.stop()
 
     def start(self):
         factory = pb.PBClientFactory() 
@@ -306,7 +321,7 @@ class Game:
     def gotGame(self, game):
         self.server.game = game
         print "joining sample users..."
-        game.callRemote("sample_game", 5).addCallback(self.gotPlayer)
+        game.callRemote("sample_game", 4).addCallback(self.gotPlayer)
 
     def gotPlayer(self, player):
         self.server.player = player
@@ -318,13 +333,6 @@ class Game:
         self.server.player.callRemote("set_ready").addCallback(self.playerReady)
 
     def playerReady(self, *a):
-        if SHUFFLE_THE_BOARD:
-            print "shuffling the board..."
-            self.server.game.callRemote("shuffle").addCallback(self.boardShuffled)
-        else:
-            self.boardShuffled()
-
-    def boardShuffled(self, *a):
         print "getting other players' names..."
         self.server.game.callRemote("players").addCallback(self.gotPlayers)
 
@@ -336,14 +344,28 @@ class Game:
     def gotSide(self, side):
         print "building the board..."
         self.buildBoard(side)
+        if SHUFFLE_THE_BOARD:
+            print "shuffling the board..."
+            self.server.game.callRemote("shuffle").addCallback(self.boardShuffled)
+        else:
+            self.boardShuffled()
+
+    def boardShuffled(self, *a):
+        self.menuDisable()
 
     def toggleMenu(self):
         if self.menuEnabled:
-            self.menuViewport.disable()
-            self.menuEnabled = False
+            self.menuDisable()
         else:
-            self.menuViewport.enable()
-            self.menuEnabled = True
+            self.menuEnable()
+
+    def menuEnable(self):
+        self.menuViewport.enable()
+        self.menuEnabled = True
+
+    def menuDisable(self):
+        self.menuViewport.disable()
+        self.menuEnabled = False
 
     def handleMenuEvent(self, event):
         if event.type is MOUSEBUTTONDOWN:
@@ -441,11 +463,11 @@ class Game:
             if event.type is MOUSEMOTION:
                 self.newPosition = event.pos
             if event.type is QUIT:
-                reactor.stop()
+                self.exitGame()
+            elif event.type is KEYDOWN and event.key is K_q:
+                self.exitGame()
             elif event.type is KEYDOWN and event.key is K_ESCAPE:
                 self.toggleMenu()
-            elif event.type is KEYDOWN and event.key is K_q:
-                reactor.stop()
             elif self.menuEnabled:
                 self.handleMenuEvent(event)
             else:
@@ -491,6 +513,6 @@ class Game:
 if __name__ == "__main__":
     game=Game()
     game.setupLoop()
-    game.start()
+    #game.start()
     reactor.run()
     pygame.quit()
