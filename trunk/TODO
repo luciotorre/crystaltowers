@@ -2,3 +2,4 @@
  * Animar las piezas hasta la posicion correspondiente
 
  * Poder jugar de a varios
+ * submit bug en euclid: Matrix4.new_perspective recibe fov_y en radians (tendria que ser en degrees)

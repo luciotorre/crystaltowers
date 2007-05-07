@@ -5,13 +5,9 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 from euclid import *
 
-def generateSelectionRay(x, y):
-    viewport = glGetIntegerv(GL_VIEWPORT) # Retrieves The Viewport Values (X, Y, Width, Height)
-    modelview = glGetDoublev(GL_MODELVIEW_MATRIX) # Retrieve The Modelview Matrix
-    projection = glGetDoublev(GL_PROJECTION_MATRIX) # Retrieve The Projection Matrix 
-
+def generateSelectionRay(x, y, viewport, modelview, projection):
     def unProject(x, y, z, modelview, projection):
-        result = gluUnProject(x, y, z, modelview, projection, viewport)
+        result = gluUnProject(x, y, z, list(modelview), list(projection), viewport)
         return Point3(*result)
 
     return LineSegment3(

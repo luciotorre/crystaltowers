@@ -4,6 +4,7 @@ import random
 from pygame.locals import *
 
 import qgl
+import leafs
 from OpenGL.GL import *
 from OpenGL.GLU import *
     
@@ -71,6 +72,46 @@ class TriangleListNode(qgl.scene.Leaf):
         glCallList(self.list.id)
 
 
+class Menu(qgl.scene.Group):
+    selectedItem = None
+    def __init__(self, menuOptions):
+        menuitemSeparation = 40
+        numOptions = len(menuOptions)
+
+        qgl.scene.Group.__init__(self)
+        self.node_type = "Group"
+        fondo = qgl.scene.state.Quad((500, menuitemSeparation * numOptions + 20))
+        blend = qgl.scene.state.Color( (.05, .05, .3, .8) )
+        fondoGroup = qgl.scene.Group()
+        fondoGroup.add(blend)
+        fondoGroup.add(fondo)
+        self.add( fondoGroup )
+
+        self.menuItemsGroup = qgl.scene.Group()
+        self.add(self.menuItemsGroup)
+
+        for n, (label, action) in enumerate(menuOptions):
+            texto = leafs.TextoAlineado(label, "data/fonts/menu.ttf", size=750, aligny=0.8)
+            t = qgl.scene.Group()
+            t.action = action
+            t.selectable = True
+            t.translate = 0, menuitemSeparation*(numOptions/2-n), 0
+            t.add(texto)
+            self.menuItemsGroup.add(t)
+
+    def clicked(self):
+        if self.selectedItem is not None:
+            print self.selectedItem, self.selectedItem.action
+
+    def selected(self, item):
+        if item != self.selectedItem:
+            if item is not None:
+                item.scale = (1.3, 1.3, 1.0)
+            if self.selectedItem is not None:
+                self.selectedItem.scale = (1.0, 1.0, 1.0)
+            self.selectedItem = item
+
+
 TOWER_COLOURS = [
     (1.0, 0.0, 0.0, 1.0),
     (0.0, 0.8, 0.0, 1.0),
@@ -88,6 +129,7 @@ class Game:
     server = None
     players = None
     picked = None
+    lastMenuPosition = None
 
     def __init__(self):
         #setup pygame as normal, making sure to include the OPENGL flag in the init function arguments.
@@ -115,8 +157,12 @@ class Game:
         
         #every root node must have a viewport branch, which specifies which area of the screen to draw to.
         #the PersepctiveViewport renders all its children in a 3d view.
-        viewport = qgl.scene.PerspectiveViewport()
-        viewport.screen_dimensions = (0,0) + WINDOW_SIZE
+        self.viewport = qgl.scene.PerspectiveViewport()
+        self.viewport.screen_dimensions = (0,0) + WINDOW_SIZE
+
+        self.menuViewport = qgl.scene.OrthoViewport()
+        self.menuViewport.screen_dimensions = (0,0) + WINDOW_SIZE
+        self.menuEnabled = True
         
         #a group node can translate, rotate and scale its children. it can also contain leaves, which are drawable things.
         self.gameGroup = qgl.scene.Group()
@@ -125,7 +171,7 @@ class Game:
         self.gameGroup.translate = Point3( 0.0, -10.0, -50 )
         #the group node has attributes that can be changed to manipulate the position of its children.
         self.gameGroup.axis = Vector3(0,1,0)
-        self.gameGroup.angle = 45
+        self.gameGroup.angle = 33
         
         #a Light leaf will control the lighting of any leaves rendered after it.
         ambient = [0.0, 0.0, 0.0, 1.0]
@@ -141,23 +187,41 @@ class Game:
         #to light, it would move, and rotate with its children.
         #this is not the effect we want in this case, so we add the light to its
         #own group, which we will call environment.
-        environment = qgl.scene.Group()
+        self.environment = qgl.scene.Group()
 
         #Now we add the different nodes and leaves into a tree structure using the .add method. 
-        self.root_node.add(viewport)
-        viewport.add(environment)
-        environment.add(light)
-        environment.add(self.gameGroup)
+        self.root_node.add(self.viewport)
+        self.root_node.add(self.menuViewport)
+        self.viewport.add(self.environment)
+        self.environment.add(light)
+        self.environment.add(self.gameGroup)
+        self.environment.translate = Point3( 0, -15, 0)
+        self.environment.axis = Vector3(1,0,0)
+        self.environment.angle = 30
 
         self.localBoard = RemoteBoard()
 
         self.boardGroup = qgl.scene.Group()
         #boardGroup.axis = (1,0,0)
         #boardGroup.angle -= 90
-        self.boardGroup.translate = (0,-1,0)
+        boardY = -1.0
+        self.boardGroup.translate = (0,boardY,0)
         #boardTexture = qgl.scene.state.Texture("art/board.jpg")
         #self.boardGroup.add(boardTexture)
         self.gameGroup.add(self.boardGroup)
+
+        menuOptions = [
+            ("Hello world", 1),
+            ("What the fsck", 2),
+            ("So what you want", 3),
+            ("This is the way", 3),
+            ("This is the only way", 3),
+            ("Cold in the head", 3),
+            ("Warm in the heart", 3),
+        ]
+        self.menuGroup = Menu(menuOptions)
+        self.menuViewport.add( self.menuGroup )
+
 
         #Before the structure can be drawn, it needs to be compiled.
         #To do this, we ask the root node to accept the compiler visitor.
@@ -166,7 +230,8 @@ class Game:
         self.root_node.accept(self.compiler)
         self.pieces = {}
         self.onHand = None
-        self.boardPlane = Plane( Point3(0,-11,0), Point3(0,-11,1), Point3(1,-11,1) )
+        self.boardPlane = Plane( Point3(0,boardY,0), Point3(0,boardY,1), Point3(1,boardY,1) )
+
 
     def setupLoop(self):
         self.loopingCall = task.LoopingCall(self.loop)
@@ -188,7 +253,7 @@ class Game:
                 cell.position = (x,z)
                 self.boardGroup.add(cell)
 
-                cell.translate = (x-side/2 + ((z%2)*0.5+0.25))*4, 0, (z-side/2)*3.5777087639996634
+                cell.translate = (x-side/2 + ((z%2)*0.5+0.25))*4, 0, (z+0.5-side/2)*3.5777087639996634
                 cell.angle = 90
                 cell.axis= 0,1,0
                 cell.add( hex )
@@ -272,6 +337,79 @@ class Game:
         print "building the board..."
         self.buildBoard(side)
 
+    def toggleMenu(self):
+        if self.menuEnabled:
+            self.menuViewport.disable()
+            self.menuEnabled = False
+        else:
+            self.menuViewport.enable()
+            self.menuEnabled = True
+
+    def handleMenuEvent(self, event):
+        if event.type is MOUSEBUTTONDOWN:
+            if event.button == 1:
+                self.menuGroup.clicked()
+
+    def handleBoardEvent(self, event):
+        if event.type is MOUSEMOTION:
+            if pygame.key.get_mods() & KMOD_CTRL:
+                self.gameGroup.angle += event.rel[0]/2.5
+        elif event.type is MOUSEBUTTONDOWN:
+            if event.button == 1:
+                #tell the picker we are interested in the area clicked by the mouse
+                self.picker.set_position(event.pos)
+                #ask the root node to accept the picker.
+                self.root_node.accept(self.picker)
+                #picker.hits will be a list of nodes which were rendered at the position.
+                if len(self.picker.hits) > 0:
+                    self.picked = self.picker.hits[0]
+                    if self.picked is self.onHand:
+                        if len(self.picker.hits) > 1:
+                            self.picked = self.picker.hits[1]
+                        else:
+                            self.picked = None
+                if self.picked is not None:
+                    print "clickeada la pieza...", self.picked
+                    if hasattr(self.picked, "id"):
+                        if self.onHand is None:
+                            def gotPiece(result, piece):
+                                print "Fue levantada la pieza...", piece
+                                self.onHand = piece
+                            def noPiece(failure, *a):
+                                print failure, failure.getErrorMessage(), failure.type, a
+                                # failure.trap...
+
+                            stack = self.localBoard.board[self.picked.position]
+                            if len(stack) == 1:
+                                d=self.server.player.callRemote("pick", self.picked.position)
+                            else:
+                                d=self.server.player.callRemote("mine", self.picked.position, self.picked.id)
+                            d.addCallbacks(gotPiece, noPiece, [self.picked])
+
+                        else:
+                            def pieceCapped(result, *a):
+                                print "capped!", result, a
+                                self.onHand = None
+                            def cannotCap(failure):
+                                print "cannot cap!"
+                            print "capping..."
+                            d=self.server.player.callRemote("cap", self.picked.position)
+                            d.addCallback(pieceCapped, cannotCap)
+                    elif hasattr(self.picked, "position"):
+                        def pieceDropped(result):
+                            print "Soltada la pieza...", result
+                            self.onHand = None
+                        def cannotDrop(failure):
+                            print "No se puede soltar la pieza...", failure
+                        d=self.server.player.callRemote("drop", self.picked.position)
+                        d.addCallbacks(pieceDropped, cannotDrop)
+            elif event.button == 4:
+                self.newPosition = event.pos
+                self.gameGroup.angle -= 5
+            elif event.button == 5:
+                self.newPosition = event.pos
+                self.gameGroup.angle += 5
+
     #the main render loop
     def loop(self):
         side = self.localBoard.side
@@ -290,90 +428,57 @@ class Game:
                     if lastscale != 0:
                         y += 3*(lastscale - scale) + 0.4
 
-                    piece.translate = (x-side/2 + ((z%2)*0.5+0.25))*4, -1+scale + y, (z-side/2)*3.5777087639996634
+                    piece.translate = (x-side/2 + ((z%2)*0.5+0.25))*4, -1+scale + y, (z+0.5-side/2)*3.5777087639996634
                     lastscale = scale
 
+        self.newPosition = None
+        if self.menuEnabled:
+            self.gameGroup.angle += 2
+            self.newPosition = pygame.mouse.get_pos()
 
-        newPosition = None
         #process pygame events.
         for event in pygame.event.get():
             if event.type is MOUSEMOTION:
-                newPosition = event.pos
-                if pygame.key.get_mods() & KMOD_CTRL:
-                    self.gameGroup.angle += event.rel[0]/2.5
-            elif event.type is QUIT:
+                self.newPosition = event.pos
+            if event.type is QUIT:
                 reactor.stop()
             elif event.type is KEYDOWN and event.key is K_ESCAPE:
+                self.toggleMenu()
+            elif event.type is KEYDOWN and event.key is K_q:
                 reactor.stop()
-            elif event.type is MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    #tell the picker we are interested in the area clicked by the mouse
-                    self.picker.set_position(event.pos)
-                    #ask the root node to accept the picker.
-                    self.root_node.accept(self.picker)
-                    #picker.hits will be a list of nodes which were rendered at the position.
-                    if len(self.picker.hits) > 0:
-                        self.picked = self.picker.hits[0]
-                        if self.picked is self.onHand:
-                            if len(self.picker.hits) > 1:
-                                self.picked = self.picker.hits[1]
-                            else:
-                                self.picked = None
-                    if self.picked is not None:
-                        print "clickeada la pieza...", self.picked
-                        if hasattr(self.picked, "id"):
-                            if self.onHand is None:
-                                def gotPiece(result, piece):
-                                    print "Fue levantada la pieza...", piece
-                                    self.onHand = piece
-                                def noPiece(failure, *a):
-                                    print failure, failure.getErrorMessage(), failure.type, a
-                                    # failure.trap...
+            elif self.menuEnabled:
+                self.handleMenuEvent(event)
+            else:
+                self.handleBoardEvent(event)
 
-                                stack = self.localBoard.board[self.picked.position]
-                                if len(stack) == 1:
-                                    d=self.server.player.callRemote("pick", self.picked.position)
-                                else:
-                                    d=self.server.player.callRemote("mine", self.picked.position, self.picked.id)
-                                d.addCallbacks(gotPiece, noPiece, [self.picked])
+        if self.newPosition is not None and self.onHand is not None:
+            projection = Matrix4.new_perspective(math.radians(45.0), self.viewport.aspect, 10.0, 10000.0)
+            modelview = Matrix4.new_identity()
+            modelview = modelview.translate(*self.environment.translate).rotate_axis(math.radians(self.environment.angle), self.environment.axis)
+            modelview = modelview.translate(*self.gameGroup.translate).rotate_axis(math.radians(self.gameGroup.angle), self.gameGroup.axis)
 
-                            else:
-                                def pieceCapped(result, *a):
-                                    print "capped!", result, a
-                                    self.onHand = None
-                                def cannotCap(failure):
-                                    print "cannot cap!"
-                                print "capping..."
-                                d=self.server.player.callRemote("cap", self.picked.position)
-                                d.addCallback(pieceCapped, cannotCap)
-                        elif hasattr(self.picked, "position"):
-                            def pieceDropped(result):
-                                print "Soltada la pieza...", result
-                                self.onHand = None
-                            def cannotDrop(failure):
-                                print "No se puede soltar la pieza...", failure
-                            d=self.server.player.callRemote("drop", self.picked.position)
-                            d.addCallbacks(pieceDropped, cannotDrop)
-                elif event.button == 4:
-                    newPosition = event.pos
-                    self.gameGroup.angle -= 5
-                elif event.button == 5:
-                    newPosition = event.pos
-                    self.gameGroup.angle += 5
-
-        if newPosition is not None and self.onHand is not None:
-            #print self.onHand.id, newPosition
-            mx, my = newPosition
-            ray = selection.generateSelectionRay(mx,WINDOW_SIZE[1]-my)
+            mx, my = self.newPosition
+            ray = selection.generateSelectionRay( mx, WINDOW_SIZE[1]-my, self.viewport.screen_dimensions, modelview, projection )
             point = self.boardPlane.intersect(ray)
             if point is not None:
-                matrix = Matrix4.new_rotate_axis(-math.radians(self.gameGroup.angle), self.gameGroup.axis).translate(*-self.gameGroup.translate)
-                point = matrix * point
-                #x, y, z = Point3(*point)-Point3(*self.gameGroup.translate)
                 x, y, z = point
                 scale = self.onHand.scale[0]
                 self.onHand.translate = x, scale-1, z
-            #print "feel my death ray...", newPosition, ray, point
+            #print "feel my death ray...", self.newPosition, ray, point
+
+        if self.menuEnabled and self.newPosition is not None:
+            if self.newPosition != self.lastMenuPosition:
+                self.lastMenuPosition = self.newPosition
+                # buscar cual item se esta apuntando
+                self.environment.disable()
+                self.picker.set_position(self.newPosition)
+                self.root_node.accept(self.picker)
+                self.environment.enable()
+                if len(self.picker.hits) > 0:
+                    picked = self.picker.hits[0]
+                    self.menuGroup.selected(picked)
+                else:
+                    self.menuGroup.selected(None)
 
         #ask the root node to accept the render visitor.
         #This will draw the structure onto the screen.
