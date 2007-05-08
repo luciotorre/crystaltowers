@@ -121,6 +121,7 @@ class FontTexture(object):
 
         for c in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ`1234567890-=+_)(*&^%$#@!~[]\\;\',./<>?:"{}| ':
             image = font.render(c, True, foreground).convert(32, pygame.SRCALPHA)
+            pygame.draw.rect( image, (255.0,0.0,0.0,0.0), image.get_rect(), 1)
             image = pygame.transform.flip(image, False, True)
             alphabet[c] = pack.pack(image)
             
