@@ -33,7 +33,7 @@ class RegularPolygonNode(qgl.scene.Leaf):
         self.list = qgl.render.GLDisplayList()
         glNewList(self.list.id, GL_COMPILE)
         glBegin(GL_TRIANGLE_FAN)
-        glNormal3dv( (0.0, 0.0, -1.0) )
+        glNormal3dv( (0.0, 1.0, 0.0) )
         for vertices in self.vertices:
             glVertex3dv(vertices)
         glEnd()
@@ -351,7 +351,8 @@ class Game:
             self.boardShuffled()
 
     def boardShuffled(self, *a):
-        self.menuDisable()
+        pass
+        #self.menuDisable()
 
     def toggleMenu(self):
         if self.menuEnabled:
