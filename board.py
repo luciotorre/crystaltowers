@@ -17,7 +17,7 @@ import math
 from euclid import *
 import selection
 
-SHUFFLE_THE_BOARD = True
+SHUFFLE_THE_BOARD = False
 
 class GameError(pb.Error): pass
 
@@ -74,13 +74,17 @@ class TriangleListNode(qgl.scene.Leaf):
 
 class Menu(qgl.scene.Group):
     selectedItem = None
-    def __init__(self, menuOptions):
-        menuitemSeparation = 40
-        numOptions = len(menuOptions)
-
+    menuitemSeparation = 40
+    def __init__(self):
         qgl.scene.Group.__init__(self)
         self.node_type = "Group"
-        fondo = qgl.scene.state.Quad((500, menuitemSeparation * numOptions + 20))
+
+    def setOptions(self, menuOptions):
+        self.remove(*self.branches)
+
+        numOptions = len(menuOptions)
+
+        fondo = qgl.scene.state.Quad((500, self.menuitemSeparation * numOptions + 20))
         blend = qgl.scene.state.Color( (.05, .05, .3, .8) )
         fondoGroup = qgl.scene.Group()
         fondoGroup.add(blend)
@@ -95,7 +99,7 @@ class Menu(qgl.scene.Group):
             t = qgl.scene.Group()
             t.action = action
             t.selectable = True
-            t.translate = 0, menuitemSeparation*(numOptions/2-n-.7), 0
+            t.translate = 0, self.menuitemSeparation*(numOptions/2-n-.7), 0
             t.add(texto)
             self.menuItemsGroup.add(t)
 
@@ -163,7 +167,7 @@ class Game:
 
         self.menuViewport = qgl.scene.OrthoViewport()
         self.menuViewport.screen_dimensions = (0,0) + WINDOW_SIZE
-        self.menuEnabled = True
+        self.menuDisable()
         
         #a group node can translate, rotate and scale its children. it can also contain leaves, which are drawable things.
         self.gameGroup = qgl.scene.Group()
@@ -203,13 +207,14 @@ class Game:
         self.localBoard = RemoteBoard()
         self.createBoardGroup()
 
-        menuOptions = [
-            ("Join new game", self.joinServer),
-            ("Keep playing", self.keepPlaying),
-            ("Exit game", self.exitGame),
-        ]
-        self.menuGroup = Menu(menuOptions)
+        self.menuGroup = Menu()
         self.menuViewport.add( self.menuGroup )
+        #menuOptions = [
+        #    ("Join new game", self.joinServer),
+        #    ("Keep playing", self.keepPlaying),
+        #    ("Exit game", self.exitGame),
+        #]
+        #self.menuGroup.setOptions(menuOptions)
 
 
         #Before the structure can be drawn, it needs to be compiled.
@@ -297,6 +302,9 @@ class Game:
 
         self.gameGroup.accept(self.compiler)
 
+    def recompile(self, node):
+        node.accept(self.compiler)
+
     def joinServer(self):
         self.start()
         pass
@@ -307,7 +315,7 @@ class Game:
     def exitGame(self):
         reactor.stop()
 
-    def start(self):
+    def connect(self):
         factory = pb.PBClientFactory() 
         print "connecting to server...",
         reactor.connectTCP("127.0.0.1", 9091, factory)
@@ -315,20 +323,63 @@ class Game:
 
     def gotServer(self, server):
         self.server = server
+        print "getting games..."
+        server.callRemote("games").addCallback(self.gotGames)
+
+    def showFailure(self, *f):
+        print f
+
+    def gameJoiner(self, game):
+        def f():
+            self.menuDisable()
+            self.server.game = game
+            print "joining game..." + repr(game)
+            game.callRemote("join", self.getPlayerName()).addCallbacks(self.gotPlayer, self.showFailure)
+        return f
+
+    def gotGames(self, games):
+        self.server.game = games
+        menuOptions = []
+        for game in games:
+            print dir(game)
+            menuOptions.append( ("Join " + repr(game), self.gameJoiner(game) ) )
+        menuOptions.append( ("Create new game", self.createGame) )
+        self.menuGroup.setOptions(menuOptions)
+        self.recompile(self.menuGroup)
+        self.menuEnable()
+        print games
+
+    playerName = "alecu" + repr(random.random())
+    def getPlayerName(self):
+        return self.playerName
+
+    def createGame(self):
+        self.menuDisable()
         print "creating game..."
-        server.callRemote("create_game", "g").addCallback(self.gotGame)
+        self.server.callRemote("create_game", self.getPlayerName()).addCallback(self.gotGame)
 
     def gotGame(self, game):
         self.server.game = game
-        print "joining sample users..."
-        game.callRemote("sample_game", 4).addCallback(self.gotPlayer)
+        #print "joining sample users..."
+        #game.callRemote("sample_game", 4).addCallback(self.gotPlayer)
+        game.callRemote("join", self.getPlayerName()).addCallbacks(self.gotPlayer, self.showFailure)
 
     def gotPlayer(self, player):
         self.server.player = player
         print "setting board..."
-        player.callRemote("set_board", self.localBoard).addCallback(self.boardSet)
+        self.server.player.callRemote("set_board", self.localBoard).addCallback(self.boardSet)
 
     def boardSet(self, *a):
+        self.showReadyMenu()
+
+    def showReadyMenu(self):
+        menuOptions = []
+        menuOptions.append( ("Ready to start", self.imReady) )
+        self.menuGroup.setOptions(menuOptions)
+        self.recompile(self.menuGroup)
+        self.menuEnable()
+
+    def imReady(self):
         print "letting the server know that the player is ready..."
         self.server.player.callRemote("set_ready").addCallback(self.playerReady)
 
@@ -339,7 +390,13 @@ class Game:
     def gotPlayers(self, plys):
         self.players = plys
         print "getting board side..."
-        self.server.game.callRemote("get_side").addCallback(self.gotSide)
+        self.getSide()
+
+    def getSide(self):
+        self.server.game.callRemote("get_side").addCallbacks(self.gotSide, self.cannotGetSide)
+
+    def cannotGetSide(self, f):
+        reactor.callLater(.5, self.getSide)
 
     def gotSide(self, side):
         print "building the board..."
@@ -514,6 +571,6 @@ class Game:
 if __name__ == "__main__":
     game=Game()
     game.setupLoop()
-    #game.start()
+    game.connect()
     reactor.run()
     pygame.quit()
