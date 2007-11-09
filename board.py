@@ -340,16 +340,15 @@ class Game:
     def gotGames(self, games):
         self.server.game = games
         menuOptions = []
-        for game in games:
-            print dir(game)
-            menuOptions.append( ("Join " + repr(game), self.gameJoiner(game) ) )
+        for game, gamename in games:
+            menuOptions.append( ("Join " + gamename, self.gameJoiner(game) ) )
         menuOptions.append( ("Create new game", self.createGame) )
         self.menuGroup.setOptions(menuOptions)
         self.recompile(self.menuGroup)
         self.menuEnable()
         print games
 
-    playerName = "alecu" + repr(random.random())
+    playerName = "alecu" + repr(random.random())[2:7]
     def getPlayerName(self):
         return self.playerName
 
