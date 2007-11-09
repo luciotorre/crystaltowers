@@ -10,7 +10,7 @@ class NetworkServer(pb.Root):
         self.server = model.Server()
         
     def remote_games(self):
-        return [ NetworkGame(g) for g in self.server.games() ]
+        return [ (NetworkGame(g), g.name) for g in self.server.games() ]
 
     def remote_create_game(self, name):
         g = self.server.create_game(name)
